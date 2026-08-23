@@ -181,12 +181,15 @@ The left panel contains every configured server and its channel/query buffers. T
 
 Keyboard controls:
 
-- `Ctrl-N` / `Tab`: next buffer
+- `Ctrl-N`: next buffer
 - `Ctrl-P`: previous buffer
+- `Tab`: complete a nickname at the cursor; repeated Tab cycles matches
 - `PageUp` / `PageDown`: scroll transcript
 - `End`: return to following the newest messages
 - `Ctrl-U`: clear input
 - `Ctrl-C`: quit
+
+Nickname completion is channel-aware. For example, typing `ali` at the start of the input and pressing `Tab` can produce `Alice: `. If more than one nickname matches, press `Tab` repeatedly to cycle through them. When the partial nick appears later in a message, Copperline completes only the nick and does not add the reply colon.
 
 Mouse controls are enabled when `general.mouse = true`. Click a server/channel/query in the sidebar, click a nick to open a query, and use the wheel over the transcript to scroll.
 
