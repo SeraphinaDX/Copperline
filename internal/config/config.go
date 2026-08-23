@@ -21,11 +21,16 @@ type GeneralConfig struct {
 	Nick          string `toml:"nick"`
 	User          string `toml:"user"`
 	RealName      string `toml:"real_name"`
+	Logging       *bool  `toml:"logging"`
 	LogDir        string `toml:"log_dir"`
 	Timestamp     string `toml:"timestamp"`
 	Mouse         bool   `toml:"mouse"`
 	HistoryLines  int    `toml:"history_lines"`
 	ReconnectSecs int    `toml:"reconnect_seconds"`
+}
+
+func (g GeneralConfig) LoggingEnabled() bool {
+	return g.Logging == nil || *g.Logging
 }
 
 type ThemeConfig struct {

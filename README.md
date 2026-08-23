@@ -18,7 +18,7 @@ This is a usable first implementation with a deliberately separated IRC core, TU
 - IRCv3 account/away/chghost/extended-join state through girc
 - Requests modern capabilities including batch, labeled-response, standard-replies, chathistory, read-marker, multiline and related draft caps
 - `/history` support using IRCv3 CHATHISTORY
-- Local per-network/per-buffer logs
+- Optional local per-network/per-buffer logs
 - DCC SEND receive/send
 - Incoming DCC CHAT acceptance
 - Mouse wheel scrollback
@@ -41,6 +41,8 @@ go build -o Copperline ./cmd/copperline
 ```
 
 ## Configuration
+
+For the complete TOML reference, defaults, inheritance rules, theme options, DCC, SASL, and IRCv3 capability settings, see [`CONFIGURATION.md`](CONFIGURATION.md).
 
 Copperline defaults to:
 
@@ -69,6 +71,17 @@ You can also select another configuration:
 ```sh
 ./Copperline -config=./my-config.toml
 ```
+
+### Logging
+
+Logging is enabled by default. Disable all on-disk IRC logs while keeping normal in-memory scrollback with:
+
+```toml
+[general]
+logging = false
+```
+
+See `CONFIGURATION.md` for log paths, permissions, and related options.
 
 ### Theme
 

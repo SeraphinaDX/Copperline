@@ -16,15 +16,20 @@ var unsafeName = regexp.MustCompile(`[^A-Za-z0-9._#&+!-]+`)
 
 type Logger struct {
 	mu        sync.Mutex
+	enabled   bool
 	dir       string
 	timestamp string
 }
 
-func New(dir, timestamp string) *Logger {
-	return &Logger{dir: config.ExpandPath(dir), timestamp: timestamp}
+func New(enabled bool, dir, timestamp string) *Logger {
+	return &Logger{enabled: enabled, dir: config.ExpandPath(dir), timestamp: timestamp}
 }
 
 func (l *Logger) Write(m model.Message) error {
+	if !l.enabled {
+		return nil
+	}
+
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	server := safe(m.Server)

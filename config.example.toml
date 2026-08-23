@@ -2,6 +2,7 @@
 nick = "myNick"
 user = "myNick"
 real_name = "Copperline User"
+logging = true
 log_dir = "~/.local/state/copperline/logs"
 timestamp = "15:04"
 mouse = true

@@ -40,7 +40,7 @@ func New(cfg *config.Config) *App {
 	a := &App{
 		cfg:    cfg,
 		state:  model.New(cfg.General.HistoryLines),
-		logger: logging.New(cfg.General.LogDir, cfg.General.Timestamp),
+		logger: logging.New(cfg.General.LoggingEnabled(), cfg.General.LogDir, cfg.General.Timestamp),
 		theme:  newUITheme(cfg.Theme),
 		follow: true,
 	}
