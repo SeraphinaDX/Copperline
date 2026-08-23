@@ -411,7 +411,8 @@ func (a *App) rebuildCurrent() {
 	a.userNicks = a.irc.Names(b.Server, b.Target)
 	a.users.Rows = make([]string, 0, len(a.userNicks))
 	for _, nick := range a.userNicks {
-		a.users.Rows = append(a.users.Rows, styled(nick, a.theme.nickColor(nick)))
+		displayNick := a.irc.NickPrefix(b.Server, b.Target, nick) + nick
+		a.users.Rows = append(a.users.Rows, styled(displayNick, a.theme.nickColor(nick)))
 	}
 
 	nick := a.irc.CurrentNick(b.Server)

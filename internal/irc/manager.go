@@ -357,9 +357,102 @@ func (m *Manager) Names(server, channel string) []string {
 	if ch == nil {
 		return nil
 	}
-	out := append([]string(nil), ch.UserList...)
-	sort.Strings(out)
+
+	users := ch.Users(c)
+	sort.SliceStable(users, func(i, j int) bool {
+		ri := channelPrivilegeRank(users[i], channel)
+		rj := channelPrivilegeRank(users[j], channel)
+		if ri != rj {
+			return ri < rj
+		}
+
+		leftNick := ""
+		rightNick := ""
+		if users[i] != nil {
+			leftNick = users[i].Nick
+		}
+		if users[j] != nil {
+			rightNick = users[j].Nick
+		}
+
+		left := strings.ToLower(leftNick)
+		right := strings.ToLower(rightNick)
+		if left != right {
+			return left < right
+		}
+		return leftNick < rightNick
+	})
+
+	out := make([]string, 0, len(users))
+	for _, user := range users {
+		if user != nil {
+			out = append(out, user.Nick)
+		}
+	}
 	return out
+}
+
+// channelPrivilegeRank follows the conventional IRC channel privilege order.
+// girc tracks permissions per channel, including common non-RFC owner/admin/half-op
+// modes. Users without a tracked privilege sort after voiced users.
+func channelPrivilegeRank(user *girc.User, channel string) int {
+	if user == nil || user.Perms == nil {
+		return 6
+	}
+
+	perms, ok := user.Perms.Lookup(channel)
+	if !ok {
+		return 6
+	}
+
+	switch {
+	case perms.Owner:
+		return 0
+	case perms.Admin:
+		return 1
+	case perms.Op:
+		return 2
+	case perms.HalfOp:
+		return 3
+	case perms.Voice:
+		return 4
+	default:
+		return 6
+	}
+}
+
+// NickPrefix returns the conventional IRC status prefix for a nick in a channel.
+// The highest privilege is shown when a user has more than one channel mode.
+func (m *Manager) NickPrefix(server, channel, nick string) string {
+	c, err := m.client(server)
+	if err != nil || !model.IsChannel(channel) {
+		return ""
+	}
+
+	user := c.LookupUser(nick)
+	if user == nil || user.Perms == nil {
+		return ""
+	}
+
+	perms, ok := user.Perms.Lookup(channel)
+	if !ok {
+		return ""
+	}
+
+	switch {
+	case perms.Owner:
+		return "~"
+	case perms.Admin:
+		return "&"
+	case perms.Op:
+		return "@"
+	case perms.HalfOp:
+		return "%"
+	case perms.Voice:
+		return "+"
+	default:
+		return ""
+	}
 }
 
 func (m *Manager) ChannelTopic(server, channel string) string {
