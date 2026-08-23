@@ -2,12 +2,6 @@
 
 Copperline is a multi-server, multi-channel terminal IRC client written in Go using `github.com/metaspartan/gotui/v5`.
 
-![Screenshot 1](screenshots/screenshot1.avif)
-
-Did I mention its themable via TOML?
-
-![Screenshot 2](screenshots/screenshot2.avif)
-
 This is a usable first implementation with a deliberately separated IRC core, TUI, buffer model, logging layer, configuration loader, and DCC manager so the client can grow without becoming one giant `main.go`.
 
 ## Features
@@ -25,6 +19,7 @@ This is a usable first implementation with a deliberately separated IRC core, TU
 - Requests modern capabilities including batch, labeled-response, standard-replies, chathistory, read-marker, multiline and related draft caps
 - `/history` support using IRCv3 CHATHISTORY
 - Optional local per-network/per-buffer logs
+- Optional Gotify notifications for incoming mentions and private messages
 - DCC SEND receive/send
 - Incoming DCC CHAT acceptance
 - Mouse wheel scrollback
@@ -146,6 +141,37 @@ logging = false
 
 See `CONFIGURATION.md` for log paths, permissions, and related options.
 
+### Gotify notifications
+
+Copperline can push incoming mentions and private messages to a Gotify server. Create a Gotify **application** and use its application token. Environment variables are recommended instead of storing the token directly in TOML.
+
+```toml
+[gotify]
+enabled = true
+url = "https://push.example.com"
+token_env = "COPPERLINE_GOTIFY_TOKEN"
+mentions = true
+private_messages = true
+priority = 5
+timeout_seconds = 5
+```
+
+With fish:
+
+```fish
+read -s -P 'Gotify application token: ' COPPERLINE_GOTIFY_TOKEN
+set -x COPPERLINE_GOTIFY_TOKEN $COPPERLINE_GOTIFY_TOKEN
+./Copperline
+```
+
+Test the setup inside Copperline with:
+
+```text
+/gotify test
+```
+
+Gotify requests run asynchronously, so an unavailable notification server does not freeze IRC or the TUI. Your own messages do not generate Gotify notifications. See `CONFIGURATION.md` for every Gotify option and the exact trigger behavior.
+
 ### Theme
 
 Copperline has a built-in dark navy/copper/aqua theme. Add a `[theme]` section only when you want to override it. Colors may be `#RRGGBB` true-color values or gotui color names such as `cyan`, `orange`, `purple`, `skyblue`, and `lightgreen`.
@@ -165,6 +191,7 @@ server = "#64d8cb"
 channel = "#8bd49c"
 query = "#d9a7ff"
 unread = "#f6c177"
+mention = "#ff9ecb"
 notice = "#f6c177"
 action = "#d9a7ff"
 system = "#72c7ef"
@@ -222,6 +249,8 @@ Mouse controls are enabled when `general.mouse = true`. Click a server/channel/q
 /dcc list
 /dcc accept nick
 /dcc send nick /path/to/file
+/gotify status
+/gotify test
 /close
 /quit [reason]
 ```
@@ -288,6 +317,7 @@ internal/config/      TOML configuration
 internal/model/       buffers and messages
 internal/irc/         multi-server IRC + IRCv3 manager
 internal/logging/     local logs
+internal/gotify/      Gotify notification client
 internal/dcc/         DCC parsing and transfers
 internal/tui/         gotui interface and commands
 ```

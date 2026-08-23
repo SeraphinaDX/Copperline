@@ -14,6 +14,7 @@ type Config struct {
 	General GeneralConfig  `toml:"general"`
 	Theme   ThemeConfig    `toml:"theme"`
 	DCC     DCCConfig      `toml:"dcc"`
+	Gotify  GotifyConfig   `toml:"gotify"`
 	Servers []ServerConfig `toml:"server"`
 }
 
@@ -67,6 +68,32 @@ type DCCConfig struct {
 	DownloadDir string `toml:"download_dir"`
 	ListenAddr  string `toml:"listen_addr"`
 	AdvertiseIP string `toml:"advertise_ip"`
+}
+
+type GotifyConfig struct {
+	Enabled         bool   `toml:"enabled"`
+	URL             string `toml:"url"`
+	Token           string `toml:"token"`
+	TokenEnv        string `toml:"token_env"`
+	Mentions        *bool  `toml:"mentions"`
+	PrivateMessages *bool  `toml:"private_messages"`
+	Priority        *int   `toml:"priority"`
+	TimeoutSeconds  int    `toml:"timeout_seconds"`
+}
+
+func (g GotifyConfig) MentionsEnabled() bool {
+	return g.Mentions == nil || *g.Mentions
+}
+
+func (g GotifyConfig) PrivateMessagesEnabled() bool {
+	return g.PrivateMessages == nil || *g.PrivateMessages
+}
+
+func (g GotifyConfig) PriorityValue() int {
+	if g.Priority == nil {
+		return 5
+	}
+	return *g.Priority
 }
 
 type ServerConfig struct {
@@ -149,6 +176,9 @@ func (c *Config) applyDefaults() {
 	if c.DCC.ListenAddr == "" {
 		c.DCC.ListenAddr = "0.0.0.0:0"
 	}
+	if c.Gotify.TimeoutSeconds <= 0 {
+		c.Gotify.TimeoutSeconds = 5
+	}
 	for i := range c.Servers {
 		s := &c.Servers[i]
 		if s.Port == 0 {
@@ -215,6 +245,14 @@ func (t *ThemeConfig) applyDefaults() {
 }
 
 func (c *Config) Validate() error {
+	if c.Gotify.Enabled {
+		if strings.TrimSpace(c.Gotify.URL) == "" {
+			return errors.New("gotify is enabled but [gotify].url is empty")
+		}
+		if strings.TrimSpace(Secret(c.Gotify.Token, c.Gotify.TokenEnv)) == "" {
+			return errors.New("gotify is enabled but no application token is available; set token or token_env")
+		}
+	}
 	if len(c.Servers) == 0 {
 		return errors.New("configuration contains no [[server]] entries")
 	}

@@ -52,6 +52,7 @@ server = "#64d8cb"
 channel = "#8bd49c"
 query = "#d9a7ff"
 unread = "#f6c177"
+mention = "#ff9ecb"
 notice = "#f6c177"
 action = "#d9a7ff"
 system = "#72c7ef"
@@ -73,6 +74,15 @@ enabled = true
 download_dir = "~/Downloads"
 listen_addr = "0.0.0.0:0"
 advertise_ip = "192.0.2.10"
+
+[gotify]
+enabled = false
+url = "https://push.example.com"
+token_env = "COPPERLINE_GOTIFY_TOKEN"
+mentions = true
+private_messages = true
+priority = 5
+timeout_seconds = 5
 
 [[server]]
 name = "libera"
@@ -302,6 +312,72 @@ If `advertise_ip` is empty and `listen_addr` resolves to a specific non-wildcard
 For peers outside your LAN, the advertised address must actually be reachable. NAT/firewall configuration may therefore be necessary.
 
 DCC traffic is a direct peer-to-peer TCP connection. IRC TLS does not encrypt the DCC transfer itself.
+
+---
+
+# `[gotify]`
+
+Optional Gotify push notifications. Copperline sends notifications using Gotify's application message API. Create an **application** in the Gotify WebUI and use that application's token; a Gotify client token is not the token used for sending messages.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | bool | `false` | Enables Gotify notifications. When false, Copperline makes no Gotify HTTP requests. |
+| `url` | string | none | Gotify server base URL, for example `https://push.example.com` or `https://example.com/gotify`. A URL ending in `/message` is also accepted. Required when enabled. |
+| `token` | string | none | Gotify application token stored directly in TOML. Supported, but `token_env` is preferable for secrets. |
+| `token_env` | string | none | Environment variable containing the Gotify application token. If the variable is set, it takes precedence over `token`. |
+| `mentions` | bool | `true` | Send Gotify notifications for incoming channel messages/actions that mention your current nick. |
+| `private_messages` | bool | `true` | Send Gotify notifications for incoming private messages/actions. |
+| `priority` | integer | `5` | Gotify message priority. Gotify clients use priority when deciding how prominently to present a notification. |
+| `timeout_seconds` | integer | `5` | HTTP timeout for a Gotify request. Values `<= 0` are reset to `5`. |
+
+Example:
+
+```toml
+[gotify]
+enabled = true
+url = "https://push.example.com"
+token_env = "COPPERLINE_GOTIFY_TOKEN"
+mentions = true
+private_messages = true
+priority = 5
+timeout_seconds = 5
+```
+
+Copperline posts JSON to Gotify's `/message` endpoint and authenticates with the application token. Notifications are sent on a background queue so a slow or offline Gotify server does not block IRC processing or the TUI. If the queue fills while Gotify is unavailable, new notification work is dropped rather than allowing unbounded memory growth.
+
+A private message which also mentions your nick produces only one notification. Mention notifications take precedence. Your own outgoing/echoed messages never trigger Gotify. Notices, server numerics, joins/parts, and other system events do not trigger Gotify in the current build.
+
+## Gotify application token
+
+In the Gotify WebUI, create an application for Copperline and copy its application token. With Gotify 3.x, application tokens are shown when created or rotated, so save it somewhere appropriate at that time.
+
+For fish, a session-only exported variable can be set with:
+
+```fish
+set -x COPPERLINE_GOTIFY_TOKEN 'your-gotify-application-token'
+./Copperline
+```
+
+Or enter it without echoing it on screen:
+
+```fish
+read -s -P 'Gotify application token: ' COPPERLINE_GOTIFY_TOKEN
+set -x COPPERLINE_GOTIFY_TOKEN $COPPERLINE_GOTIFY_TOKEN
+./Copperline
+```
+
+Do not use `set -Ux` for the token unless you intentionally want fish to persist it in universal-variable storage.
+
+## Testing Gotify
+
+Once Copperline is running:
+
+```text
+/gotify status
+/gotify test
+```
+
+`/gotify status` reports whether the integration is enabled. `/gotify test` sends a real test notification and reports an HTTP/authentication error back in the current Copperline buffer if it fails.
 
 ---
 

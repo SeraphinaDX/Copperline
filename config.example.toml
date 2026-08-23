@@ -51,6 +51,19 @@ download_dir = "~/Downloads"
 advertise_ip = "192.0.2.10"
 listen_addr = "0.0.0.0:0"
 
+# Optional Gotify notifications for incoming mentions and private messages.
+# Create a Gotify application and export its application token before starting
+# Copperline. An inline token is supported but token_env is recommended.
+[gotify]
+enabled = false
+url = "https://push.example.com"
+token_env = "COPPERLINE_GOTIFY_TOKEN"
+# token = "A..."
+mentions = true
+private_messages = true
+priority = 5
+timeout_seconds = 5
+
 [[server]]
 name = "libera"
 host = "irc.libera.chat"

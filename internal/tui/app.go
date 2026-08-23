@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"copperline/internal/config"
+	gotifynotify "copperline/internal/gotify"
 	ircclient "copperline/internal/irc"
 	"copperline/internal/logging"
 	"copperline/internal/model"
@@ -21,6 +23,7 @@ type App struct {
 	state   *model.State
 	irc     *ircclient.Manager
 	logger  *logging.Logger
+	gotify  *gotifynotify.Notifier
 	theme   uiTheme
 	stopped atomic.Bool
 
@@ -47,6 +50,7 @@ func New(cfg *config.Config) *App {
 		cfg:    cfg,
 		state:  model.New(cfg.General.HistoryLines),
 		logger: logging.New(cfg.General.LoggingEnabled(), cfg.General.LogDir, cfg.General.Timestamp),
+		gotify: gotifynotify.New(cfg.Gotify),
 		theme:  newUITheme(cfg.Theme),
 		follow: true,
 	}
@@ -129,14 +133,48 @@ func (a *App) onMessage(msg model.Message) {
 	// Mentions are detected only for incoming chat/action messages. In
 	// particular, we never inspect the input widget, and an echoed copy of
 	// our own outgoing message cannot highlight itself as a mention.
+	self := ""
 	if msg.Kind == model.KindMessage || msg.Kind == model.KindAction {
-		self := a.irc.CurrentNick(msg.Server)
+		self = a.irc.CurrentNick(msg.Server)
 		if self != "" && msg.Nick != "" && !strings.EqualFold(msg.Nick, self) && containsNickMention(msg.Text, self) {
 			msg.Mention = true
 		}
 	}
 	a.state.Add(msg)
 	_ = a.logger.Write(msg)
+	a.notifyGotify(msg, self)
+}
+
+func (a *App) notifyGotify(msg model.Message, self string) {
+	if a.gotify == nil || !a.gotify.Enabled() {
+		return
+	}
+	if msg.Kind != model.KindMessage && msg.Kind != model.KindAction {
+		return
+	}
+	if self == "" {
+		self = a.irc.CurrentNick(msg.Server)
+	}
+	if self == "" || msg.Nick == "" || strings.EqualFold(msg.Nick, self) {
+		return
+	}
+
+	body := fmt.Sprintf("<%s> %s", msg.Nick, msg.Text)
+	if msg.Kind == model.KindAction {
+		body = fmt.Sprintf("* %s %s", msg.Nick, msg.Text)
+	}
+
+	// A private message which also contains our nick generates only one
+	// notification: the higher-signal mention notification wins.
+	if msg.Mention && a.cfg.Gotify.MentionsEnabled() {
+		a.gotify.Send(fmt.Sprintf("Copperline mention: %s / %s", msg.Server, msg.Target), body)
+		return
+	}
+
+	private := msg.Target != "" && msg.Target != "*server*" && !model.IsChannel(msg.Target)
+	if private && a.cfg.Gotify.PrivateMessagesEnabled() {
+		a.gotify.Send(fmt.Sprintf("Copperline PM: %s on %s", msg.Nick, msg.Server), body)
+	}
 }
 
 func (a *App) local(server, target string, kind model.Kind, text string) {
@@ -589,7 +627,7 @@ func (a *App) execute(line string) {
 
 	switch cmd {
 	case "help":
-		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /connect /disconnect /join /part /query /msg /me /notice /nick /topic /whois /raw /history /markread /caps /dcc /close /quit")
+		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /connect /disconnect /join /part /query /msg /me /notice /nick /topic /whois /raw /history /markread /caps /dcc /gotify /close /quit")
 	case "server":
 		if arg1 == "" {
 			a.local(b.Server, b.Target, model.KindSystem, "servers: "+strings.Join(a.irc.ServerNames(), ", "))
@@ -712,6 +750,8 @@ func (a *App) execute(line string) {
 		a.local(b.Server, b.Target, model.KindSystem, "negotiated IRCv3: "+strings.Join(caps, ", "))
 	case "dcc":
 		a.executeDCC(b, arg1, tail)
+	case "gotify":
+		a.executeGotify(b, arg1)
 	case "close":
 		if b.Target != "*server*" {
 			a.state.Close(b.Server, b.Target)
@@ -721,6 +761,34 @@ func (a *App) execute(line string) {
 		a.stopped.Store(true)
 	default:
 		a.local(b.Server, b.Target, model.KindError, "unknown command /"+cmd+" — try /help")
+	}
+}
+
+func (a *App) executeGotify(b *model.Buffer, sub string) {
+	switch strings.ToLower(sub) {
+	case "status":
+		if a.gotify != nil && a.gotify.Enabled() {
+			a.local(b.Server, b.Target, model.KindSystem, "Gotify enabled")
+		} else {
+			a.local(b.Server, b.Target, model.KindSystem, "Gotify disabled")
+		}
+	case "test":
+		if a.gotify == nil || !a.gotify.Enabled() {
+			a.local(b.Server, b.Target, model.KindError, "Gotify is disabled in configuration")
+			return
+		}
+		server, target := b.Server, b.Target
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Duration(a.cfg.Gotify.TimeoutSeconds)*time.Second)
+			defer cancel()
+			if err := a.gotify.Test(ctx); err != nil {
+				a.local(server, target, model.KindError, "Gotify test failed: "+err.Error())
+				return
+			}
+			a.local(server, target, model.KindSystem, "Gotify test notification sent")
+		}()
+	default:
+		a.local(b.Server, b.Target, model.KindSystem, "usage: /gotify status | /gotify test")
 	}
 }
 
