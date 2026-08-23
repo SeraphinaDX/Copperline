@@ -1,0 +1,74 @@
+[general]
+nick = "myNick"
+user = "myNick"
+real_name = "Copperline User"
+log_dir = "~/.local/state/copperline/logs"
+timestamp = "15:04"
+mouse = true
+history_lines = 2000
+reconnect_seconds = 10
+
+# Optional UI theme. Copperline uses these values by default if [theme] is omitted.
+# Colors may be #RRGGBB true-color values or gotui names such as
+# red, green, yellow, blue, cyan, magenta, white, grey, orange, purple,
+# pink, gold, teal, turquoise, violet, lightblue, lightgreen, skyblue, etc.
+[theme]
+background = "#090d16"
+panel = "#101827"
+foreground = "#d8dee9"
+muted = "#77839a"
+border = "#36506b"
+title = "#64d8cb"
+selected_fg = "#071018"
+selected_bg = "#d99058"
+timestamp = "#77839a"
+server = "#64d8cb"
+channel = "#8bd49c"
+query = "#d9a7ff"
+unread = "#f6c177"
+notice = "#f6c177"
+action = "#d9a7ff"
+system = "#72c7ef"
+error = "#ff6b81"
+dcc = "#8bd49c"
+topic = "#f2cc8f"
+input = "#eef1f6"
+cursor_fg = "#071018"
+cursor_bg = "#64d8cb"
+status_fg = "#071018"
+status_bg = "#64d8cb"
+nick_colors = [
+    "#ff7b72", "#f6c177", "#8bd49c", "#64d8cb",
+    "#72c7ef", "#d9a7ff", "#ff9ecb", "#d99058",
+]
+
+[dcc]
+enabled = true
+download_dir = "~/Downloads"
+# For outgoing DCC SEND, set this to the public/LAN IP peers can reach.
+advertise_ip = "192.0.2.10"
+listen_addr = "0.0.0.0:0"
+
+[[server]]
+name = "libera"
+host = "irc.libera.chat"
+port = 6697
+tls = true
+auto_connect = true
+nick = "myNick"
+channels = ["#go-nuts", "#linux"]
+# Extra capabilities are added to Copperline's built-in IRCv3 request set.
+caps = []
+
+[server.sasl]
+mechanism = "plain"
+username = "myNick"
+password_env = "LIBERA_IRC_PASSWORD"
+
+[[server]]
+name = "oftc"
+host = "irc.oftc.net"
+port = 6697
+tls = true
+auto_connect = false
+channels = ["#debian"]
