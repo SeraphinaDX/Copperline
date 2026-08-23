@@ -219,6 +219,7 @@ Use known names or `#RRGGBB` values; invalid color strings are not recommended.
 | `server` | `#64d8cb` | Server indicator/color in the sidebar. |
 | `channel` | `#8bd49c` | Joined-channel indicator/color. |
 | `query` | `#d9a7ff` | Private-query indicator/color. |
+| `mention` | `#ff9ecb` | Incoming messages/actions that mention your current nick. |
 | `unread` | `#f6c177` | Unread-count indicator. |
 | `notice` | `#f6c177` | IRC NOTICE sender marker. |
 | `action` | `#d9a7ff` | `/me`/CTCP ACTION marker. |

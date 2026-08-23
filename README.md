@@ -2,12 +2,6 @@
 
 Copperline is a multi-server, multi-channel terminal IRC client written in Go using `github.com/metaspartan/gotui/v5`.
 
-![screenshot 1](screenshots/screenshot1.avif)
-
-Did I mention its theme-able?
-
-![screenshot 2](screenshots/screenshot2.avif)
-
 This is a usable first implementation with a deliberately separated IRC core, TUI, buffer model, logging layer, configuration loader, and DCC manager so the client can grow without becoming one giant `main.go`.
 
 ## Features
@@ -291,3 +285,8 @@ internal/logging/     local logs
 internal/dcc/         DCC parsing and transfers
 internal/tui/         gotui interface and commands
 ```
+
+
+## Mention highlighting
+
+Copperline highlights incoming messages and `/me` actions that mention your current nickname. The mention color is configurable with `theme.mention` (default `#ff9ecb`). Your own outgoing messages are never highlighted as mentions.

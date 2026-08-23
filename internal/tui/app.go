@@ -126,6 +126,15 @@ func (a *App) Run() error {
 }
 
 func (a *App) onMessage(msg model.Message) {
+	// Mentions are detected only for incoming chat/action messages. In
+	// particular, we never inspect the input widget, and an echoed copy of
+	// our own outgoing message cannot highlight itself as a mention.
+	if msg.Kind == model.KindMessage || msg.Kind == model.KindAction {
+		self := a.irc.CurrentNick(msg.Server)
+		if self != "" && msg.Nick != "" && !strings.EqualFold(msg.Nick, self) && containsNickMention(msg.Text, self) {
+			msg.Mention = true
+		}
+	}
 	a.state.Add(msg)
 	_ = a.logger.Write(msg)
 }
@@ -749,6 +758,51 @@ func (a *App) executeDCC(b *model.Buffer, sub, rest string) {
 		}
 	default:
 		a.local(b.Server, b.Target, model.KindDCC, "usage: /dcc list | /dcc accept nick | /dcc send nick path")
+	}
+}
+
+// containsNickMention reports whether text contains nick as an IRC nickname
+// token rather than as a substring of a longer nickname. Matching is
+// case-insensitive and permits ordinary punctuation around the nickname.
+func containsNickMention(text, nick string) bool {
+	textRunes := []rune(strings.ToLower(text))
+	nickRunes := []rune(strings.ToLower(nick))
+	if len(nickRunes) == 0 || len(textRunes) < len(nickRunes) {
+		return false
+	}
+
+	for i := 0; i+len(nickRunes) <= len(textRunes); i++ {
+		match := true
+		for j := range nickRunes {
+			if textRunes[i+j] != nickRunes[j] {
+				match = false
+				break
+			}
+		}
+		if !match {
+			continue
+		}
+		if i > 0 && isIRCNickRune(textRunes[i-1]) {
+			continue
+		}
+		end := i + len(nickRunes)
+		if end < len(textRunes) && isIRCNickRune(textRunes[end]) {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+func isIRCNickRune(r rune) bool {
+	if r >= 'a' && r <= 'z' || r >= '0' && r <= '9' {
+		return true
+	}
+	switch r {
+	case '-', '_', '[', ']', '\\', '`', '^', '{', '}', '|':
+		return true
+	default:
+		return false
 	}
 }
 

@@ -47,6 +47,7 @@ type ThemeConfig struct {
 	Channel    string   `toml:"channel"`
 	Query      string   `toml:"query"`
 	Unread     string   `toml:"unread"`
+	Mention    string   `toml:"mention"`
 	Notice     string   `toml:"notice"`
 	Action     string   `toml:"action"`
 	System     string   `toml:"system"`
@@ -193,6 +194,7 @@ func (t *ThemeConfig) applyDefaults() {
 	set(&t.Channel, "#8bd49c")
 	set(&t.Query, "#d9a7ff")
 	set(&t.Unread, "#f6c177")
+	set(&t.Mention, "#ff9ecb")
 	set(&t.Notice, "#f6c177")
 	set(&t.Action, "#d9a7ff")
 	set(&t.System, "#72c7ef")

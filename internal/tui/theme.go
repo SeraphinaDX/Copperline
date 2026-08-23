@@ -119,6 +119,13 @@ func (t uiTheme) nickColor(nick string) string {
 
 func (t uiTheme) formatMessage(m model.Message, layout string) string {
 	stamp := styled(m.Time.Local().Format(layout), t.cfg.Timestamp)
+	if m.Mention && (m.Kind == model.KindMessage || m.Kind == model.KindAction) {
+		marker := styled("!", t.cfg.Mention)
+		if m.Kind == model.KindAction {
+			return fmt.Sprintf("%s %s %s %s", stamp, marker, styled("* "+m.Nick, t.cfg.Mention), styled(m.Text, t.cfg.Mention))
+		}
+		return fmt.Sprintf("%s %s %s %s", stamp, marker, styled("<"+m.Nick+">", t.cfg.Mention), styled(m.Text, t.cfg.Mention))
+	}
 	switch m.Kind {
 	case model.KindAction:
 		return fmt.Sprintf("%s %s %s", stamp, styled("* "+m.Nick, t.cfg.Action), m.Text)

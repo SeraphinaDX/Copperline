@@ -20,13 +20,14 @@ const (
 )
 
 type Message struct {
-	Time   time.Time
-	Server string
-	Target string
-	Nick   string
-	Text   string
-	Kind   Kind
-	Tags   map[string]string
+	Time    time.Time
+	Server  string
+	Target  string
+	Nick    string
+	Text    string
+	Kind    Kind
+	Tags    map[string]string
+	Mention bool
 }
 
 type Buffer struct {
