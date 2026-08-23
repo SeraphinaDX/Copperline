@@ -17,11 +17,13 @@ import (
 )
 
 type Manager struct {
-	cfg      *config.Config
-	mu       sync.RWMutex
-	sessions map[string]*Session
-	emit     func(model.Message)
-	dcc      *dcc.Manager
+	cfg        *config.Config
+	mu         sync.RWMutex
+	sessions   map[string]*Session
+	emit       func(model.Message)
+	dcc        *dcc.Manager
+	ctcpMu     sync.Mutex
+	recentCTCP map[string]time.Time
 }
 
 type Session struct {
@@ -59,7 +61,12 @@ var defaultCaps = []string{
 }
 
 func New(cfg *config.Config, emit func(model.Message)) *Manager {
-	m := &Manager{cfg: cfg, sessions: make(map[string]*Session), emit: emit}
+	m := &Manager{
+		cfg:        cfg,
+		sessions:   make(map[string]*Session),
+		emit:       emit,
+		recentCTCP: make(map[string]time.Time),
+	}
 	m.dcc = dcc.New(
 		config.ExpandPath(cfg.DCC.DownloadDir),
 		cfg.DCC.ListenAddr,
@@ -93,7 +100,7 @@ func (m *Manager) newClient(sc config.ServerConfig) *girc.Client {
 		ServerPass:    config.Secret(sc.Password, sc.PasswordEnv),
 		SSL:           sc.TLS,
 		SupportedCaps: caps,
-		Version:       "Copperline IRC client",
+		Version:       "Copperline by Britney Lozza",
 	}
 	if sc.TLS {
 		gc.TLSConfig = &tls.Config{ServerName: sc.Host, InsecureSkipVerify: sc.SkipVerify, MinVersion: tls.VersionTLS12} //nolint:gosec
@@ -113,6 +120,14 @@ func (m *Manager) installHandlers(server string, c *girc.Client) {
 	c.Handlers.Add(girc.ALL_EVENTS, func(client *girc.Client, e girc.Event) {
 		m.handleEvent(server, client, e)
 	})
+
+	// Copperline handles VERSION/TIME from the single PRIVMSG event path in
+	// handleEvent(). Replace girc's default responders with no-ops so there is
+	// exactly one place in Copperline that can send these replies.
+	c.CTCP.Clear(girc.CTCP_VERSION)
+	c.CTCP.Set(girc.CTCP_VERSION, func(_ *girc.Client, _ girc.CTCPEvent) {})
+	c.CTCP.Clear(girc.CTCP_TIME)
+	c.CTCP.Set(girc.CTCP_TIME, func(_ *girc.Client, _ girc.CTCPEvent) {})
 	if m.cfg.DCC.Enabled {
 		c.CTCP.SetBg("DCC", func(_ *girc.Client, ce girc.CTCPEvent) {
 			if ce.Source == nil {
@@ -131,6 +146,37 @@ func (m *Manager) installHandlers(server string, c *girc.Client) {
 			m.emitMessage(model.Message{Time: time.Now(), Server: server, Target: ce.Source.Name, Kind: model.KindDCC, Text: text})
 		})
 	}
+}
+
+func (m *Manager) allowCTCPReply(server string, ce girc.CTCPEvent) bool {
+	if ce.Reply || ce.Source == nil {
+		return false
+	}
+
+	now := time.Now()
+	key := strings.ToLower(server) + "\x00" + strings.ToLower(ce.Source.ID()) + "\x00" + strings.ToUpper(ce.Command) + "\x00" + ce.Text
+
+	m.ctcpMu.Lock()
+	defer m.ctcpMu.Unlock()
+
+	// Identical CTCP requests arriving within two seconds are treated as one.
+	// This is long enough to collapse duplicate delivery while still allowing
+	// a user to deliberately query us again almost immediately afterward.
+	if last, ok := m.recentCTCP[key]; ok && now.Sub(last) < 2*time.Second {
+		return false
+	}
+	m.recentCTCP[key] = now
+
+	// Keep the map bounded during long-running sessions.
+	if len(m.recentCTCP) > 128 {
+		cutoff := now.Add(-10 * time.Second)
+		for k, seen := range m.recentCTCP {
+			if seen.Before(cutoff) {
+				delete(m.recentCTCP, k)
+			}
+		}
+	}
+	return true
 }
 
 func (m *Manager) Start() {
@@ -234,6 +280,28 @@ func (m *Manager) SendMessage(server, target, text string) error {
 	if !c.HasCapability("echo-message") {
 		m.emitMessage(model.Message{Time: time.Now(), Server: server, Target: target, Nick: c.GetNick(), Text: text, Kind: model.KindMessage})
 	}
+	return nil
+}
+
+func (m *Manager) SendCTCP(server, target, command, text string) error {
+	c, err := m.client(server)
+	if err != nil {
+		return err
+	}
+	target = strings.TrimSpace(target)
+	command = strings.ToUpper(strings.TrimSpace(command))
+	if target == "" || target == "*server*" {
+		return errors.New("CTCP requires a target nick")
+	}
+	if command == "" {
+		return errors.New("CTCP requires a command")
+	}
+	c.Cmd.SendCTCP(target, command, strings.TrimSpace(text))
+	display := "CTCP " + command + " -> " + target
+	if strings.TrimSpace(text) != "" {
+		display += ": " + strings.TrimSpace(text)
+	}
+	m.emitMessage(model.Message{Time: time.Now(), Server: server, Target: target, Kind: model.KindSystem, Text: display})
 	return nil
 }
 
@@ -568,6 +636,16 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 				return
 			}
 			if ctcp != nil && !strings.EqualFold(ctcp.Command, "ACTION") {
+				switch strings.ToUpper(ctcp.Command) {
+				case girc.CTCP_VERSION:
+					if m.allowCTCPReply(server, *ctcp) {
+						c.Cmd.SendCTCPReply(source, girc.CTCP_VERSION, "Copperline by Britney Lozza")
+					}
+				case girc.CTCP_TIME:
+					if m.allowCTCPReply(server, *ctcp) {
+						c.Cmd.SendCTCPReply(source, girc.CTCP_TIME, ":"+time.Now().Format(time.RFC1123Z))
+					}
+				}
 				m.emitMessage(model.Message{Time: when, Server: server, Target: source, Nick: source, Text: "CTCP " + ctcp.Command + " " + ctcp.Text, Kind: model.KindSystem, Tags: tags})
 				return
 			}
@@ -589,6 +667,14 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		return
 	case girc.NOTICE:
 		if len(e.Params) < 2 {
+			return
+		}
+		if ok, ctcp := e.IsCTCP(); ok && ctcp != nil {
+			text := "CTCP " + ctcp.Command + " reply from " + source
+			if strings.TrimSpace(ctcp.Text) != "" {
+				text += ": " + ctcp.Text
+			}
+			m.emitMessage(model.Message{Time: when, Server: server, Target: source, Nick: source, Text: text, Kind: model.KindSystem, Tags: tags})
 			return
 		}
 		target := e.Params[0]

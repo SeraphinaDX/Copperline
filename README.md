@@ -253,6 +253,7 @@ Mouse controls are enabled when `general.mouse = true`. Click a server/channel/q
 /msg nick message
 /me action
 /notice target message
+/ctcp nick command [text]
 /nick newnick
 /topic new topic
 /whois nick
@@ -268,6 +269,16 @@ Mouse controls are enabled when `general.mouse = true`. Click a server/channel/q
 /close
 /quit [reason]
 ```
+
+CTCP requests can be sent directly to another user. For example:
+
+```text
+/ctcp Alice VERSION
+/ctcp Alice TIME
+/ctcp Alice PING 123456789
+```
+
+Replies are displayed as system lines in that user's query buffer.
 
 ## IRCv3
 

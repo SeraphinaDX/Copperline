@@ -714,7 +714,7 @@ func (a *App) execute(line string) {
 
 	switch cmd {
 	case "help":
-		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /nick /topic /whois /raw /history /markread /caps /dcc /gotify /close /quit")
+		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /ctcp /nick /topic /whois /raw /history /markread /caps /dcc /gotify /close /quit")
 	case "server":
 		if arg1 == "" {
 			a.local(b.Server, b.Target, model.KindSystem, "servers: "+strings.Join(a.irc.ServerNames(), ", "))
@@ -798,6 +798,16 @@ func (a *App) execute(line string) {
 		}
 		if err := a.irc.Notice(b.Server, arg1, strings.TrimSpace(tail)); err != nil {
 			a.local(b.Server, b.Target, model.KindError, err.Error())
+		}
+	case "ctcp":
+		ctcpCommand, ctcpText := cutWord(tail)
+		if arg1 == "" || ctcpCommand == "" {
+			a.local(b.Server, b.Target, model.KindError, "usage: /ctcp nick command [text]")
+			return
+		}
+		a.state.Ensure(b.Server, arg1)
+		if err := a.irc.SendCTCP(b.Server, arg1, ctcpCommand, strings.TrimSpace(ctcpText)); err != nil {
+			a.local(b.Server, arg1, model.KindError, err.Error())
 		}
 	case "nick":
 		if arg1 != "" {
