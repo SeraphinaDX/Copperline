@@ -2,12 +2,19 @@
 
 Copperline is a multi-server, multi-channel terminal IRC client written in Go using `github.com/metaspartan/gotui/v5`.
 
+![Copperline main interface](screenshot/screenshot1.avif)
+
+![Copperline themes](screenshot/screenshot2.avif)
+
+![Copperline Gotify notifications](screenshot/screenshot3.avif)
+
 This is a usable first implementation with a deliberately separated IRC core, TUI, buffer model, logging layer, configuration loader, and DCC manager so the client can grow without becoming one giant `main.go`.
 
 ## Features
 
 - Multiple IRC servers connected at the same time
 - Multiple channels and private-message/query buffers
+- Numbered buffers with WeeChat-style `F6` direct jumping
 - TOML configuration
 - Configurable true-color theme with colored nicks, message types, buffer state, borders, input and status bars
 - TLS IRC connections
@@ -143,6 +150,7 @@ See `CONFIGURATION.md` for log paths, permissions, and related options.
 
 ### Gotify notifications
 
+
 Copperline can push incoming mentions and private messages to a Gotify server. Create a Gotify **application** and use its application token. Environment variables are recommended instead of storing the token directly in TOML.
 
 ```toml
@@ -173,6 +181,7 @@ Test the setup inside Copperline with:
 Gotify requests run asynchronously, so an unavailable notification server does not freeze IRC or the TUI. Your own messages do not generate Gotify notifications. See `CONFIGURATION.md` for every Gotify option and the exact trigger behavior.
 
 ### Theme
+
 
 Copperline has a built-in dark navy/copper/aqua theme. Add a `[theme]` section only when you want to override it. Colors may be `#RRGGBB` true-color values or gotui color names such as `cyan`, `orange`, `purple`, `skyblue`, and `lightgreen`.
 
@@ -210,12 +219,14 @@ Nick colors are chosen deterministically from `nick_colors`, so the same nicknam
 
 ## Layout
 
-The left panel contains every configured server and its channel/query buffers. The middle is the current conversation. Wide terminals also get a nick list on the right. The input line is at the bottom.
+The left panel contains every configured server and its channel/query buffers. Every visible buffer is numbered in sidebar order so it can be selected directly. The middle is the current conversation. Wide terminals also get a nick list on the right. The input line is at the bottom.
 
 Keyboard controls:
 
 - `Ctrl-N`: next buffer
 - `Ctrl-P`: previous buffer
+- `F6`, number, `Enter`: jump directly to a numbered buffer
+- `Escape`: cancel an active F6 buffer jump
 - `Tab`: complete a nickname at the cursor; repeated Tab cycles matches
 - `PageUp` / `PageDown`: scroll transcript
 - `End`: return to following the newest messages
@@ -224,12 +235,15 @@ Keyboard controls:
 
 Nickname completion is channel-aware. For example, typing `ali` at the start of the input and pressing `Tab` can produce `Alice: `. If more than one nickname matches, press `Tab` repeatedly to cycle through them. When the partial nick appears later in a message, Copperline completes only the nick and does not add the reply colon.
 
+Buffer numbers are shown in the left sidebar and follow the same order used by `Ctrl-N` and `Ctrl-P`. To jump directly, press `F6`, type the displayed number, and press `Enter`. For example, if `#golang` is buffer `7`, use `F6`, `7`, `Enter`. Press `Escape` to cancel. Buffer numbers can change when buffers are opened or closed, so the sidebar is the source of truth. `Tab` remains dedicated to nickname completion.
+
 Mouse controls are enabled when `general.mouse = true`. Click a server/channel/query in the sidebar, click a nick to open a query, and use the wheel over the transcript to scroll.
 
 ## Commands
 
 ```text
 /help
+/buffer number
 /server [name]
 /connect [server]
 /disconnect [server] [reason]
