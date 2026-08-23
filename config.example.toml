@@ -6,6 +6,10 @@ logging = true
 log_dir = "~/.local/state/copperline/logs"
 timestamp = "15:04"
 mouse = true
+# IRCv3 +typing indicators. Disable send_typing if you prefer not to reveal
+# when you are composing a message.
+show_typing = true
+send_typing = true
 history_lines = 2000
 reconnect_seconds = 10
 

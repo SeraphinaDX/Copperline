@@ -26,12 +26,22 @@ type GeneralConfig struct {
 	LogDir        string `toml:"log_dir"`
 	Timestamp     string `toml:"timestamp"`
 	Mouse         bool   `toml:"mouse"`
+	ShowTyping    *bool  `toml:"show_typing"`
+	SendTyping    *bool  `toml:"send_typing"`
 	HistoryLines  int    `toml:"history_lines"`
 	ReconnectSecs int    `toml:"reconnect_seconds"`
 }
 
 func (g GeneralConfig) LoggingEnabled() bool {
 	return g.Logging == nil || *g.Logging
+}
+
+func (g GeneralConfig) ShowTypingEnabled() bool {
+	return g.ShowTyping == nil || *g.ShowTyping
+}
+
+func (g GeneralConfig) SendTypingEnabled() bool {
+	return g.SendTyping == nil || *g.SendTyping
 }
 
 type ThemeConfig struct {

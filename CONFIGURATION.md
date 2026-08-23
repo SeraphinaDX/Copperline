@@ -35,6 +35,8 @@ logging = true
 log_dir = "~/.local/state/copperline/logs"
 timestamp = "15:04"
 mouse = true
+show_typing = true
+send_typing = true
 history_lines = 2000
 reconnect_seconds = 10
 
@@ -130,8 +132,22 @@ Global defaults and client-wide behavior.
 | `log_dir` | string | `"~/.local/state/copperline/logs"` | Root directory for IRC logs when logging is enabled. `~` and `~/...` are expanded. |
 | `timestamp` | string | `"15:04"` | Go time-layout string used for displayed messages and logs. |
 | `mouse` | bool | `false` | Enables gotui mouse handling, including clickable buffers/nicks and mouse-wheel scrollback. |
+| `show_typing` | bool | `true` | Shows incoming IRCv3 `+typing` indicators in the message input title when the server supports `message-tags`. |
+| `send_typing` | bool | `true` | Sends your IRCv3 `+typing` state to compatible clients. Set to `false` if you do not want to reveal when you are composing a message. Slash commands never generate typing notifications. |
 | `history_lines` | integer | `1000` | Maximum number of messages retained in each in-memory buffer. Values `<= 0` are reset to `1000`. |
 | `reconnect_seconds` | integer | `10` | Delay between reconnect attempts. Values `<= 0` are reset to `10`. |
+
+## IRCv3 typing indicators
+
+Copperline supports the IRCv3 `+typing` client tag when the network negotiates `message-tags`. Incoming typing state is shown in the message input title, for example `Message — Alice is typing…`.
+
+```toml
+[general]
+show_typing = true
+send_typing = true
+```
+
+`show_typing = false` hides other users' indicators. `send_typing = false` is the privacy control that prevents Copperline from advertising when you are composing a message. Copperline never sends typing state while the input is a slash command. Active notifications are throttled and refreshed according to the IRCv3 timing rules; stale incoming indicators expire automatically.
 
 ## Identity inheritance
 

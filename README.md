@@ -22,6 +22,7 @@ This is a usable first implementation with a deliberately separated IRC core, TU
 - IRCv3 CAP negotiation and message tags
 - IRCv3 server-time timestamps
 - IRCv3 echo-message handling
+- IRCv3 typing indicators (`+typing`) for channels and private messages
 - IRCv3 account/away/chghost/extended-join state through girc
 - Requests modern capabilities including batch, labeled-response, standard-replies, chathistory, read-marker, multiline and related draft caps
 - `/history` support using IRCv3 CHATHISTORY
@@ -285,6 +286,16 @@ Replies are displayed as system lines in that user's query buffer.
 Copperline asks for a broad modern capability set and lets the server decide what is actually enabled. The negotiated set is visible with `/caps`.
 
 The underlying girc library already implements IRCv3 CAP handling, message tags, SASL PLAIN/EXTERNAL, server-time integration, account-notify, away-notify, chghost, extended-join and user/channel state tracking. Copperline additionally requests and understands enough of the wire protocol to use CHATHISTORY, batches/message tags, echo-message, standard replies and read-marker commands while retaining `/raw` for newer extensions.
+
+Copperline also implements the IRCv3 `+typing` client tag. When another compatible user is typing, the input title changes to something like `Message — Alice is typing…`. Copperline sends `active`, `paused`, and `done` typing state for ordinary message composition, but never for `/slash commands`. Both directions are configurable:
+
+```toml
+[general]
+show_typing = true
+send_typing = true
+```
+
+Set `send_typing = false` if you prefer not to advertise your typing state. Typing tags depend on the negotiated `message-tags` capability; `+typing` itself is a client tag, not a separate capability name.
 
 Capabilities currently requested by default include:
 

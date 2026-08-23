@@ -46,6 +46,12 @@ type App struct {
 
 	jumpMode   bool
 	jumpDigits string
+
+	typingServer    string
+	typingTarget    string
+	typingSentState string
+	typingLastSent  time.Time
+	typingLastEdit  time.Time
 }
 
 func New(cfg *config.Config) *App {
@@ -126,6 +132,7 @@ func (a *App) Run() error {
 			a.handleUIEvent(e)
 			a.render()
 		case <-ticker.C:
+			a.syncOutgoingTyping()
 			a.render()
 		}
 	}
@@ -204,6 +211,7 @@ func (a *App) handleUIEvent(e ui.Event) {
 		if a.cfg.General.Mouse {
 			a.handleMouse(e)
 		}
+		a.syncOutgoingTyping()
 		return
 	case ui.KeyboardEvent:
 		a.handleKey(e.ID)
@@ -211,6 +219,14 @@ func (a *App) handleUIEvent(e ui.Event) {
 }
 
 func (a *App) handleKey(id string) {
+	beforeText := a.input.Text
+	defer func() {
+		if a.input.Text != beforeText {
+			a.typingLastEdit = time.Now()
+		}
+		a.syncOutgoingTyping()
+	}()
+
 	if id != "<Tab>" {
 		a.resetNickCompletion()
 	}
@@ -273,6 +289,81 @@ func (a *App) handleKey(id string) {
 				a.input.InsertRune(r)
 			}
 		}
+	}
+}
+
+// syncOutgoingTyping translates edits in Copperline's input box into the
+// IRCv3 +typing client tag. Active is refreshed every four seconds, paused is
+// sent after four seconds without an edit, and Manager enforces the spec's
+// three-second minimum interval between notifications for a target.
+func (a *App) syncOutgoingTyping() {
+	b := a.state.Current()
+	server, target := "", ""
+	if b != nil && b.Target != "" && b.Target != "*server*" {
+		server, target = b.Server, b.Target
+	}
+
+	// Moving to another buffer ends the old target's typing state. If the
+	// three-second throttle suppresses this done event, the peer will still
+	// expire our previous active indication after six seconds.
+	if server != a.typingServer || target != a.typingTarget {
+		if a.typingServer != "" && a.typingTarget != "" && a.typingSentState != "" && a.typingSentState != "done" {
+			_, _ = a.irc.SendTyping(a.typingServer, a.typingTarget, "done")
+		}
+		a.typingServer = server
+		a.typingTarget = target
+		a.typingSentState = ""
+		a.typingLastSent = time.Time{}
+	}
+	if server == "" || target == "" {
+		return
+	}
+
+	now := time.Now()
+	text := strings.TrimSpace(a.input.Text)
+	desired := "done"
+	if text != "" && !strings.HasPrefix(text, "/") {
+		if a.typingLastEdit.IsZero() {
+			a.typingLastEdit = now
+		}
+		if now.Sub(a.typingLastEdit) >= 4*time.Second {
+			desired = "paused"
+		} else {
+			desired = "active"
+		}
+	}
+
+	if desired == "done" && (a.typingSentState == "" || a.typingSentState == "done") {
+		return
+	}
+	shouldSend := desired != a.typingSentState
+	if desired == "active" && a.typingSentState == "active" && now.Sub(a.typingLastSent) >= 4*time.Second {
+		shouldSend = true
+	}
+	if !shouldSend {
+		return
+	}
+
+	sent, err := a.irc.SendTyping(server, target, desired)
+	if err != nil || !sent {
+		// Connection loss and throttle suppression are both transient. The UI
+		// ticker will retry without polluting the conversation with errors.
+		return
+	}
+	a.typingSentState = desired
+	a.typingLastSent = now
+}
+
+func typingInputTitle(nicks []string) string {
+	switch len(nicks) {
+	case 0:
+		return "Message"
+	case 1:
+		return "Message — " + nicks[0] + " is typing…"
+	case 2:
+		return "Message — " + nicks[0] + " and " + nicks[1] + " are typing…"
+	default:
+		return fmt.Sprintf("Message — %s, %s +%d are typing…", nicks[0], nicks[1], len(nicks)-2)
 	}
 }
 
@@ -642,9 +733,11 @@ func (a *App) rebuildCurrent() {
 		a.transcript.Rows = []string{"No buffer selected"}
 		a.users.Rows = nil
 		a.topic.Text = ""
+		a.input.Title = "Message"
 		a.status.Text = "Copperline"
 		return
 	}
+	a.input.Title = typingInputTitle(a.irc.TypingUsers(b.Server, b.Target))
 	rows := make([]string, 0, len(b.Messages))
 	for _, msg := range b.Messages {
 		rows = append(rows, a.theme.formatMessage(msg, a.cfg.General.Timestamp))

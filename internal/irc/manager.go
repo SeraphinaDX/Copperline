@@ -24,6 +24,17 @@ type Manager struct {
 	dcc        *dcc.Manager
 	ctcpMu     sync.Mutex
 	recentCTCP map[string]time.Time
+	typingMu   sync.Mutex
+	typing     map[string]typingEntry
+	typingSent map[string]time.Time
+}
+
+type typingEntry struct {
+	Server  string
+	Target  string
+	Nick    string
+	State   string
+	Expires time.Time
 }
 
 type Session struct {
@@ -66,6 +77,8 @@ func New(cfg *config.Config, emit func(model.Message)) *Manager {
 		sessions:   make(map[string]*Session),
 		emit:       emit,
 		recentCTCP: make(map[string]time.Time),
+		typing:     make(map[string]typingEntry),
+		typingSent: make(map[string]time.Time),
 	}
 	m.dcc = dcc.New(
 		config.ExpandPath(cfg.DCC.DownloadDir),
@@ -281,6 +294,130 @@ func (m *Manager) SendMessage(server, target, text string) error {
 		m.emitMessage(model.Message{Time: time.Now(), Server: server, Target: target, Nick: c.GetNick(), Text: text, Kind: model.KindMessage})
 	}
 	return nil
+}
+
+// SendTyping advertises Copperline's current typing state using the IRCv3
+// +typing client tag. The specification requires at least three seconds
+// between typing notifications for a given target, so throttling lives here
+// rather than in the TUI.
+func (m *Manager) SendTyping(server, target, state string) (bool, error) {
+	if !m.cfg.General.SendTypingEnabled() {
+		return false, nil
+	}
+	c, err := m.client(server)
+	if err != nil {
+		return false, err
+	}
+	if !c.HasCapability("message-tags") {
+		return false, nil
+	}
+
+	target = strings.TrimSpace(target)
+	state = strings.ToLower(strings.TrimSpace(state))
+	if target == "" || target == "*server*" || strings.ContainsAny(target, " \r\n") {
+		return false, errors.New("typing notification requires a valid target")
+	}
+	switch state {
+	case "active", "paused", "done":
+	default:
+		return false, errors.New("typing state must be active, paused, or done")
+	}
+
+	now := time.Now()
+	key := strings.ToLower(server) + "\x00" + strings.ToLower(target)
+	m.typingMu.Lock()
+	if last, ok := m.typingSent[key]; ok && now.Sub(last) < 3*time.Second {
+		m.typingMu.Unlock()
+		return false, nil
+	}
+	// Reserve the send slot before writing so simultaneous callers cannot emit
+	// duplicate notifications. A failed write merely delays the next attempt.
+	m.typingSent[key] = now
+	m.typingMu.Unlock()
+
+	if err := c.Cmd.SendRawf("@+typing=%s TAGMSG %s", state, target); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// TypingUsers returns users whose IRCv3 +typing state is still live for this
+// buffer. Active notifications expire after six seconds and paused ones after
+// thirty seconds, as specified by IRCv3.
+func (m *Manager) TypingUsers(server, target string) []string {
+	if !m.cfg.General.ShowTypingEnabled() {
+		return nil
+	}
+	now := time.Now()
+	m.typingMu.Lock()
+	defer m.typingMu.Unlock()
+
+	var users []string
+	for key, entry := range m.typing {
+		if !entry.Expires.After(now) {
+			delete(m.typing, key)
+			continue
+		}
+		if strings.EqualFold(entry.Server, server) && strings.EqualFold(entry.Target, target) {
+			users = append(users, entry.Nick)
+		}
+	}
+	sort.Slice(users, func(i, j int) bool {
+		return strings.ToLower(users[i]) < strings.ToLower(users[j])
+	})
+	return users
+}
+
+func (m *Manager) setTyping(server, target, nick, state string, now time.Time) {
+	if !m.cfg.General.ShowTypingEnabled() || nick == "" || target == "" {
+		return
+	}
+	state = strings.ToLower(strings.TrimSpace(state))
+	key := strings.ToLower(server) + "\x00" + strings.ToLower(target) + "\x00" + strings.ToLower(nick)
+
+	m.typingMu.Lock()
+	defer m.typingMu.Unlock()
+	switch state {
+	case "active":
+		m.typing[key] = typingEntry{Server: server, Target: target, Nick: nick, State: state, Expires: now.Add(6 * time.Second)}
+	case "paused":
+		m.typing[key] = typingEntry{Server: server, Target: target, Nick: nick, State: state, Expires: now.Add(30 * time.Second)}
+	case "done":
+		delete(m.typing, key)
+	}
+}
+
+func (m *Manager) clearTyping(server, target, nick string) {
+	if nick == "" || target == "" {
+		return
+	}
+	key := strings.ToLower(server) + "\x00" + strings.ToLower(target) + "\x00" + strings.ToLower(nick)
+	m.typingMu.Lock()
+	delete(m.typing, key)
+	m.typingMu.Unlock()
+}
+
+func (m *Manager) clearTypingNick(server, nick string) {
+	if nick == "" {
+		return
+	}
+	m.typingMu.Lock()
+	for key, entry := range m.typing {
+		if strings.EqualFold(entry.Server, server) && strings.EqualFold(entry.Nick, nick) {
+			delete(m.typing, key)
+		}
+	}
+	m.typingMu.Unlock()
+}
+
+func (m *Manager) clearTypingServer(server string) {
+	m.typingMu.Lock()
+	for key, entry := range m.typing {
+		if strings.EqualFold(entry.Server, server) {
+			delete(m.typing, key)
+		}
+	}
+	m.typingMu.Unlock()
 }
 
 func (m *Manager) SendCTCP(server, target, command, text string) error {
@@ -629,6 +766,28 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		}
 		return
 	case girc.DISCONNECTED, girc.CLOSED:
+		m.clearTypingServer(server)
+		return
+	case "TAGMSG":
+		// +typing is a client-only IRCv3 message tag carried on TAGMSG.
+		// TAGMSG itself is intentionally not added to message history.
+		if len(e.Params) < 1 || e.Source == nil || strings.EqualFold(source, c.GetNick()) {
+			return
+		}
+		typingState, ok := e.Tags.Get("+typing")
+		if !ok {
+			// Be liberal when interoperating with clients/libraries that expose
+			// the client-only tag without its '+' marker.
+			typingState, ok = e.Tags.Get("typing")
+		}
+		if !ok {
+			return
+		}
+		target := e.Params[0]
+		if strings.EqualFold(target, c.GetNick()) {
+			target = source
+		}
+		m.setTyping(server, target, source, typingState, time.Now())
 		return
 	case girc.PRIVMSG:
 		if ok, ctcp := e.IsCTCP(); ok {
@@ -657,6 +816,7 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		if strings.EqualFold(target, c.GetNick()) {
 			target = source
 		}
+		m.clearTyping(server, target, source)
 		kind := model.KindMessage
 		text := e.Last()
 		if e.IsAction() {
@@ -681,6 +841,7 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		if strings.EqualFold(target, c.GetNick()) {
 			target = source
 		}
+		m.clearTyping(server, target, source)
 		m.emitMessage(model.Message{Time: when, Server: server, Target: target, Nick: source, Text: e.Last(), Kind: model.KindNotice, Tags: tags})
 		return
 	case girc.JOIN:
@@ -690,6 +851,7 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		return
 	case girc.PART:
 		if len(e.Params) > 0 {
+			m.clearTyping(server, e.Params[0], source)
 			text := source + " left"
 			if len(e.Params) > 1 {
 				text += " (" + e.Last() + ")"
@@ -699,6 +861,7 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		return
 	case girc.KICK:
 		if len(e.Params) >= 2 {
+			m.clearTyping(server, e.Params[0], e.Params[1])
 			m.emitMessage(model.Message{Time: when, Server: server, Target: e.Params[0], Kind: model.KindSystem, Text: fmt.Sprintf("%s kicked %s: %s", source, e.Params[1], e.Last()), Tags: tags})
 		}
 		return
@@ -708,9 +871,11 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		}
 		return
 	case girc.NICK:
+		m.clearTypingNick(server, source)
 		m.serverLine(server, model.KindSystem, source+" is now known as "+e.Last())
 		return
 	case girc.QUIT:
+		m.clearTypingNick(server, source)
 		m.serverLine(server, model.KindSystem, source+" quit: "+e.Last())
 		return
 	case "FAIL", "WARN", "NOTE":
