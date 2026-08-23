@@ -2,12 +2,6 @@
 
 Copperline is a multi-server, multi-channel terminal IRC client written in Go using `github.com/metaspartan/gotui/v5`.
 
-![Copperline main interface](screenshot/screenshot1.avif)
-
-![Copperline themes](screenshot/screenshot2.avif)
-
-![Copperline Gotify notifications](screenshot/screenshot3.avif)
-
 This is a usable first implementation with a deliberately separated IRC core, TUI, buffer model, logging layer, configuration loader, and DCC manager so the client can grow without becoming one giant `main.go`.
 
 ## Features
@@ -150,7 +144,6 @@ See `CONFIGURATION.md` for log paths, permissions, and related options.
 
 ### Gotify notifications
 
-
 Copperline can push incoming mentions and private messages to a Gotify server. Create a Gotify **application** and use its application token. Environment variables are recommended instead of storing the token directly in TOML.
 
 ```toml
@@ -181,7 +174,6 @@ Test the setup inside Copperline with:
 Gotify requests run asynchronously, so an unavailable notification server does not freeze IRC or the TUI. Your own messages do not generate Gotify notifications. See `CONFIGURATION.md` for every Gotify option and the exact trigger behavior.
 
 ### Theme
-
 
 Copperline has a built-in dark navy/copper/aqua theme. Add a `[theme]` section only when you want to override it. Colors may be `#RRGGBB` true-color values or gotui color names such as `cyan`, `orange`, `purple`, `skyblue`, and `lightgreen`.
 

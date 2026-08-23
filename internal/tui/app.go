@@ -43,6 +43,9 @@ type App struct {
 	nickCompletionStart   int
 	nickCompletionEnd     int
 	nickCompletionFirst   bool
+
+	jumpMode   bool
+	jumpDigits string
 }
 
 func New(cfg *config.Config) *App {
@@ -212,6 +215,12 @@ func (a *App) handleKey(id string) {
 		a.resetNickCompletion()
 	}
 
+	if a.jumpMode {
+		if a.handleJumpKey(id) {
+			return
+		}
+	}
+
 	switch id {
 	case "<C-c>":
 		a.stopped.Store(true)
@@ -239,6 +248,9 @@ func (a *App) handleKey(id string) {
 		a.input.Cursor = 0
 	case "<C-n>":
 		a.selectRelative(1)
+	case "<F6>":
+		a.jumpMode = true
+		a.jumpDigits = ""
 	case "<Tab>":
 		a.completeNick()
 	case "<C-p>":
@@ -441,6 +453,64 @@ func isCompletionSeparator(r rune) bool {
 	return r == ' ' || r == '\t' || r == '\n' || r == '\r'
 }
 
+// handleJumpKey handles numbered buffer jumping after F6.
+// Digits are collected until Enter. Escape cancels. Any unrelated key cancels
+// jump mode and is then handled normally, preserving the existing bindings.
+func (a *App) handleJumpKey(id string) bool {
+	switch id {
+	case "<F6>", "<Escape>":
+		a.jumpMode = false
+		a.jumpDigits = ""
+		return true
+	case "<Backspace>", "<C-h>":
+		if len(a.jumpDigits) > 0 {
+			a.jumpDigits = a.jumpDigits[:len(a.jumpDigits)-1]
+		}
+		return true
+	case "<Enter>":
+		digits := a.jumpDigits
+		a.jumpMode = false
+		a.jumpDigits = ""
+		if digits == "" {
+			return true
+		}
+		n, err := strconv.Atoi(digits)
+		if err == nil && a.selectBufferNumber(n) {
+			return true
+		}
+		if b := a.state.Current(); b != nil {
+			a.local(b.Server, b.Target, model.KindError, "no buffer numbered "+digits)
+		}
+		return true
+	}
+
+	if len(id) == 1 && id[0] >= '0' && id[0] <= '9' {
+		// Buffer numbering starts at 1, so ignore leading zeroes.
+		if id == "0" && a.jumpDigits == "" {
+			return true
+		}
+		if len(a.jumpDigits) < 6 {
+			a.jumpDigits += id
+		}
+		return true
+	}
+
+	// Do not steal any established keybinding.
+	a.jumpMode = false
+	a.jumpDigits = ""
+	return false
+}
+
+func (a *App) selectBufferNumber(n int) bool {
+	keys, _ := a.sidebarOrder()
+	if n < 1 || n > len(keys) {
+		return false
+	}
+	a.state.SelectKey(keys[n-1])
+	a.follow = true
+	return true
+}
+
 func (a *App) selectRelative(delta int) {
 	keys, current := a.sidebarOrder()
 	if len(keys) == 0 {
@@ -524,9 +594,16 @@ func (a *App) rebuildSidebar() {
 	var rows []string
 	var keys []string
 	selected := 0
+	numberWidth := len(strconv.Itoa(len(buffers)))
+	if numberWidth < 1 {
+		numberWidth = 1
+	}
+	numberLabel := func(n int) string {
+		return styled(fmt.Sprintf("%*d", numberWidth, n), a.cfg.Theme.Muted) + " "
+	}
 	for _, server := range servers {
 		serverKey := model.Key(server, "*server*")
-		label := styled("◆", a.cfg.Theme.Server) + " " + server
+		label := numberLabel(len(rows)+1) + styled("◆", a.cfg.Theme.Server) + " " + server
 		if serverKey == current {
 			selected = len(rows)
 		}
@@ -542,7 +619,7 @@ func (a *App) rebuildSidebar() {
 			} else if !model.IsChannel(b.Target) {
 				prefix = "  " + styled("@", a.cfg.Theme.Query) + " "
 			}
-			label := prefix + b.Target
+			label := numberLabel(len(rows)+1) + prefix + b.Target
 			if b.Unread > 0 {
 				label += " " + styled(fmt.Sprintf("(%d)", b.Unread), a.cfg.Theme.Unread)
 			}
@@ -605,7 +682,17 @@ func (a *App) rebuildCurrent() {
 			joinState = "  NOT JOINED"
 		}
 	}
-	a.status.Text = fmt.Sprintf(" %s  %s%s  nick:%s  IRCv3:%d caps  DCC:%d  Ctrl-N/P buffers  PgUp/PgDn scroll  /help ", b.Server, b.Target, joinState, nick, caps, offers)
+	if a.jumpMode {
+		digits := a.jumpDigits
+		if digits == "" {
+			digits = "_"
+		} else {
+			digits += "_"
+		}
+		a.status.Text = fmt.Sprintf(" Jump to buffer: %s  Enter select  Esc cancel ", digits)
+		return
+	}
+	a.status.Text = fmt.Sprintf(" %s  %s%s  nick:%s  IRCv3:%d caps  DCC:%d  Ctrl-N/P buffers  F6 jump  PgUp/PgDn scroll  /help ", b.Server, b.Target, joinState, nick, caps, offers)
 }
 
 func (a *App) execute(line string) {
@@ -627,7 +714,7 @@ func (a *App) execute(line string) {
 
 	switch cmd {
 	case "help":
-		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /connect /disconnect /join /part /query /msg /me /notice /nick /topic /whois /raw /history /markread /caps /dcc /gotify /close /quit")
+		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /nick /topic /whois /raw /history /markread /caps /dcc /gotify /close /quit")
 	case "server":
 		if arg1 == "" {
 			a.local(b.Server, b.Target, model.KindSystem, "servers: "+strings.Join(a.irc.ServerNames(), ", "))
@@ -635,6 +722,15 @@ func (a *App) execute(line string) {
 		}
 		a.state.Select(arg1, "*server*")
 		a.follow = true
+	case "buffer", "buf":
+		if arg1 == "" {
+			a.local(b.Server, b.Target, model.KindError, "usage: /buffer number")
+			return
+		}
+		n, err := strconv.Atoi(arg1)
+		if err != nil || !a.selectBufferNumber(n) {
+			a.local(b.Server, b.Target, model.KindError, "no buffer numbered "+arg1)
+		}
 	case "connect":
 		name := arg1
 		if name == "" {
