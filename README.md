@@ -2,11 +2,11 @@
 
 Copperline is a multi-server, multi-channel terminal IRC client written in Go using `github.com/metaspartan/gotui/v5`.
 
-![Copperline main interface](screenshot/screenshot1.avif)
+![Copperline main interface](screenshots/screenshot1.avif)
 
-![Copperline themes](screenshot/screenshot2.avif)
+![Copperline themes](screenshots/screenshot2.avif)
 
-![Copperline Gotify notifications](screenshot/screenshot3.avif)
+![Copperline Gotify notifications](screenshots/screenshot3.avif)
 
 This is a usable first implementation with a deliberately separated IRC core, TUI, buffer model, logging layer, configuration loader, and DCC manager so the client can grow without becoming one giant `main.go`.
 
