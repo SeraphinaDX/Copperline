@@ -59,12 +59,69 @@ mkdir -p ~/.config/copperline
 cp config.example.toml ~/.config/copperline/config.toml
 ```
 
-For passwords, environment variables are preferable to putting secrets directly in TOML:
+For passwords, environment variables are preferable to putting secrets directly in TOML. Copperline reads the variable named by `password_env` in your server or SASL configuration.
 
-```sh
-export LIBERA_IRC_PASSWORD='...'
+For example, a Libera SASL configuration can use:
+
+```toml
+[[server]]
+name = "libera"
+host = "irc.libera.chat"
+tls = true
+
+[server.sasl]
+mechanism = "plain"
+username = "myNick"
+password_env = "LIBERA_IRC_PASSWORD"
+```
+
+### Fish shell passwords
+
+With fish, export the password in the shell before starting Copperline:
+
+```fish
+set -x LIBERA_IRC_PASSWORD 'your-password-here'
 ./Copperline
 ```
+
+`set -x` exports the variable so Copperline can read it. The variable exists only for the current fish session unless you deliberately make it persistent. Start Copperline from that same shell.
+
+For a password containing spaces or shell metacharacters, keep it quoted:
+
+```fish
+set -x LIBERA_IRC_PASSWORD 'a password with spaces & symbols!'
+```
+
+To avoid typing the password visibly on the command line, fish can prompt for it without echoing the characters:
+
+```fish
+read -s -P 'Libera IRC password: ' LIBERA_IRC_PASSWORD
+set -x LIBERA_IRC_PASSWORD $LIBERA_IRC_PASSWORD
+./Copperline
+```
+
+To verify that the variable is exported without printing the password itself:
+
+```fish
+set -q LIBERA_IRC_PASSWORD; and echo 'LIBERA_IRC_PASSWORD is set'
+```
+
+To remove it from the current shell afterward:
+
+```fish
+set -e LIBERA_IRC_PASSWORD
+```
+
+You *can* make an exported fish variable persistent with `set -Ux`, but that stores the value in fish's universal-variable data on disk. For passwords, a session-only `set -x` (or the hidden `read -s` approach above) is generally preferable.
+
+For bash/zsh, the equivalent is:
+
+```sh
+export LIBERA_IRC_PASSWORD='your-password-here'
+./Copperline
+```
+
+The same pattern works for traditional IRC `PASS` authentication: point the server's `password_env` at a variable name and export that variable before starting Copperline.
 
 You can also select another configuration:
 
