@@ -138,7 +138,7 @@ You can also select another configuration:
 
 ### Logging
 
-Logging is enabled by default. When you open a channel, Copperline shows the last 10 meaningful persisted log lines in the muted theme color before new live traffic. This keeps channel context useful without rebuilding a large historical transcript. Configure or disable it with `general.log_backlog_lines`.
+Logging is enabled by default. The first time you open a channel during a Copperline session, Copperline shows the last 10 meaningful persisted log lines in the muted theme color before new live traffic. Switching away and back preserves that channel's live transcript; the log preview is not reloaded. This keeps channel context useful without rebuilding a large historical transcript. Configure or disable it with `general.log_backlog_lines`.
 
 Disable all on-disk IRC logs while keeping normal in-memory scrollback with:
 

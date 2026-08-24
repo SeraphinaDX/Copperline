@@ -141,7 +141,7 @@ Global defaults and client-wide behavior.
 | `send_typing` | bool | `true` | Sends your IRCv3 `+typing` state to compatible clients. Set to `false` if you do not want to reveal when you are composing a message. Slash commands never generate typing notifications. |
 | `show_join_messages` | bool | `true` | Shows `nick joined` lines in channel buffers. Set to `false` to hide JOIN messages while still tracking channel membership normally. |
 | `history_lines` | integer | `1000` | Maximum number of live messages retained in each in-memory buffer. Values `<= 0` are reset to `1000`. |
-| `log_backlog_lines` | integer | `10` | When a channel buffer is opened, display this many lines from the end of its plaintext log in the muted theme color before live messages. Set to `0` to disable. |
+| `log_backlog_lines` | integer | `10` | On the first visit to a channel buffer during a session, display this many lines from the end of its plaintext log in the muted theme color before live messages. Revisiting the buffer preserves its live transcript and does not reload the preview. Set to `0` to disable. |
 | `reconnect_seconds` | integer | `10` | Delay between reconnect attempts. Values `<= 0` are reset to `10`. |
 
 ## IRCv3 typing indicators
@@ -233,7 +233,7 @@ When `logging = false`, Copperline does not create or append log files. Normal i
 
 ### Channel log backlog
 
-When logging is enabled, Copperline uses the log as a small persistent backlog when you enter a channel. By default it reads the final 10 meaningful lines and shows them in `theme.muted`, then appends new live IRC messages normally underneath:
+When logging is enabled, Copperline uses the log as a small persistent backlog the first time you enter a channel during a session. By default it reads the final 10 meaningful lines and shows them in `theme.muted`, then appends new live IRC messages normally underneath. Switching away and back restores that same live transcript instead of reloading the log preview:
 
 ```toml
 [general]

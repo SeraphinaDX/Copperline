@@ -19,6 +19,15 @@ import (
 	"github.com/metaspartan/gotui/v5/widgets"
 )
 
+type transcriptCache struct {
+	rows        []string
+	selectedRow int
+	start       uint64
+	total       uint64
+	fromLog     bool
+	backlogRows int
+}
+
 type App struct {
 	cfg     *config.Config
 	state   *model.State
@@ -46,6 +55,7 @@ type App struct {
 	transcriptTotal       uint64
 	transcriptFromLog     bool
 	transcriptBacklogRows int
+	transcriptCaches      map[string]transcriptCache
 
 	nickCompletionMatches []string
 	nickCompletionIndex   int
@@ -71,13 +81,14 @@ type App struct {
 
 func New(cfg *config.Config) *App {
 	a := &App{
-		cfg:    cfg,
-		state:  model.New(cfg.General.HistoryLines),
-		logger: logging.New(cfg.General.LoggingEnabled(), cfg.General.LogDir, cfg.General.Timestamp),
-		gotify: gotifynotify.New(cfg.Gotify),
-		theme:  newUITheme(cfg.Theme),
-		follow: true,
-		redraw: make(chan struct{}, 1),
+		cfg:              cfg,
+		state:            model.New(cfg.General.HistoryLines),
+		logger:           logging.New(cfg.General.LoggingEnabled(), cfg.General.LogDir, cfg.General.Timestamp),
+		gotify:           gotifynotify.New(cfg.Gotify),
+		theme:            newUITheme(cfg.Theme),
+		follow:           true,
+		redraw:           make(chan struct{}, 1),
+		transcriptCaches: make(map[string]transcriptCache),
 	}
 	for _, s := range cfg.Servers {
 		a.state.Ensure(s.Name, "*server*")
@@ -1020,6 +1031,36 @@ func (a *App) rebuildSidebar() {
 	a.sidebar.SelectedRow = selected
 }
 
+// saveTranscriptCache remembers the rendered state of a buffer when the user
+// leaves it. Rows are copied so later widget mutations cannot rewrite another
+// buffer's cached transcript.
+func (a *App) saveTranscriptCache(key string, cached transcriptCache) {
+	if key == "" {
+		return
+	}
+	if a.transcriptCaches == nil {
+		a.transcriptCaches = make(map[string]transcriptCache)
+	}
+	cached.rows = append([]string(nil), cached.rows...)
+	a.transcriptCaches[key] = cached
+}
+
+// restoreTranscriptCache restores a buffer's existing live transcript. The
+// persistent log backlog is therefore loaded only on the first visit; later
+// visits keep the original muted seed plus every live row collected since.
+func (a *App) restoreTranscriptCache(key string) bool {
+	cached, ok := a.transcriptCaches[key]
+	if !ok {
+		return false
+	}
+	a.transcript.Rows = append([]string(nil), cached.rows...)
+	a.transcriptStart = cached.start
+	a.transcriptTotal = cached.total
+	a.transcriptFromLog = cached.fromLog
+	a.transcriptBacklogRows = cached.backlogRows
+	return true
+}
+
 func (a *App) rebuildCurrent() {
 	b := a.state.CurrentInfo()
 	if b == nil {
@@ -1050,6 +1091,20 @@ func (a *App) rebuildCurrent() {
 		oldBacklogRows := a.transcriptBacklogRows
 		preserveSelection := !bufferChanged && a.transcriptReset && !a.follow
 
+		// Save the buffer we are leaving. The persistent log preview is only a
+		// one-time seed; revisiting a buffer must restore its live transcript
+		// rather than replacing everything with the newest ten log lines.
+		if bufferChanged && a.transcriptKey != "" {
+			a.saveTranscriptCache(a.transcriptKey, transcriptCache{
+				rows:        oldRows,
+				selectedRow: oldSelected,
+				start:       oldStart,
+				total:       oldTotal,
+				fromLog:     oldFromLog,
+				backlogRows: oldBacklogRows,
+			})
+		}
+
 		// gotui's List keeps its vertical topRow offset internally. Rebuilding
 		// the widget clears stale private scroll state on buffer changes/resizes.
 		a.transcript = a.newTranscriptList()
@@ -1058,16 +1113,16 @@ func (a *App) rebuildCurrent() {
 
 		if bufferChanged {
 			a.follow = true
-			a.transcriptStart = 0
-			a.transcriptTotal = 0
-			a.transcriptFromLog = false
-			a.transcriptBacklogRows = 0
+			if !a.restoreTranscriptCache(key) {
+				a.transcriptStart = 0
+				a.transcriptTotal = 0
+				a.transcriptFromLog = false
+				a.transcriptBacklogRows = 0
 
-			// For channels, prefer a small disk-backed backlog over rebuilding the
-			// entire retained in-memory history. This mirrors classic IRC clients:
-			// opening a channel gives a little grey context, then live lines append
-			// normally underneath. Full history remains in the plaintext log.
-			a.loadChannelLogBacklog(b)
+				// Seed a channel from disk only on its first visit. Later visits
+				// restore the cached live transcript above.
+				a.loadChannelLogBacklog(b)
+			}
 		} else {
 			// A resize should not change what the user was reading. Carry the
 			// existing rendered rows into a fresh widget while clearing gotui's
@@ -1094,21 +1149,23 @@ func (a *App) rebuildCurrent() {
 	a.input.Title = typingInputTitle(a.irc.TypingUsers(b.Server, b.Target))
 
 	if a.transcriptFromLog {
-		// If an extremely large burst outran the retained in-memory window before
-		// the UI could consume it, refresh from the log tail rather than pulling a
-		// giant retained history back into the widget.
-		if a.transcriptTotal < window.Start || a.transcriptTotal > window.Total {
-			a.transcript.Rows = nil
-			a.transcriptFromLog = false
-			a.transcriptBacklogRows = 0
-			a.transcriptStart = 0
-			a.transcriptTotal = 0
-			if a.loadChannelLogBacklog(b) {
-				window = a.state.CurrentWindow(a.transcriptTotal)
-				if window == nil {
-					return
-				}
+		// If a buffer was left inactive long enough that some unseen messages
+		// have already fallen out of the retained in-memory window, do not reload
+		// its log preview and recolor/truncate the existing live transcript. Keep
+		// what the user already saw and append the retained live window.
+		if a.transcriptTotal < window.Start {
+			for _, msg := range window.Messages {
+				a.transcript.Rows = append(a.transcript.Rows, a.theme.formatMessage(msg, a.cfg.General.Timestamp))
 			}
+			a.transcriptStart = window.Start
+			a.transcriptTotal = window.Total
+			window.Messages = nil
+		} else if a.transcriptTotal > window.Total {
+			// Defensive recovery for an impossible/stale counter: retain the visible
+			// transcript and resume from the current buffer total.
+			a.transcriptStart = window.Start
+			a.transcriptTotal = window.Total
+			window.Messages = nil
 		}
 
 		if a.transcriptFromLog {
@@ -1445,6 +1502,7 @@ func (a *App) execute(line string) {
 		a.executeLua(b, arg1, tail)
 	case "close":
 		if b.Target != "*server*" {
+			delete(a.transcriptCaches, model.Key(b.Server, b.Target))
 			a.state.Close(b.Server, b.Target)
 		}
 	case "quit", "exit":
