@@ -220,7 +220,7 @@ Nick colors are chosen deterministically from `nick_colors`, so the same nicknam
 
 Copperline embeds Lua for client-side automation and customization. Scripts load from `~/.config/copperline/scripts/*.lua` by default and can register slash commands, hook IRC events, send messages/notices, write to buffers, and use raw IRC. Use `/lua reload` to reload scripts without restarting the client.
 
-The complete API and examples live in [`SCRIPTING.md`](SCRIPTING.md).
+The complete API lives in [`SCRIPTING.md`](SCRIPTING.md), and the source tree includes ready-to-copy examples in [`scripts/`](scripts/).
 
 ## Layout
 
@@ -366,6 +366,7 @@ internal/logging/     local logs
 internal/gotify/      Gotify notification client
 internal/dcc/         DCC parsing and transfers
 internal/scripting/   embedded Lua runtime and plugin API
+scripts/              example Lua scripts
 internal/tui/         gotui interface and commands
 ```
 
