@@ -117,6 +117,12 @@ func (t uiTheme) nickColor(nick string) string {
 	return t.cfg.NickColors[int(h.Sum32())%len(t.cfg.NickColors)]
 }
 
+// formatLogBacklog renders persisted context in the existing muted theme
+// color so it is visually distinct from live IRC traffic.
+func (t uiTheme) formatLogBacklog(line string) string {
+	return styled(line, t.cfg.Muted)
+}
+
 func (t uiTheme) formatMessage(m model.Message, layout string) string {
 	stamp := styled(m.Time.Local().Format(layout), t.cfg.Timestamp)
 	if m.Mention && (m.Kind == model.KindMessage || m.Kind == model.KindAction) {

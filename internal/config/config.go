@@ -31,6 +31,7 @@ type GeneralConfig struct {
 	SendTyping       *bool  `toml:"send_typing"`
 	ShowJoinMessages *bool  `toml:"show_join_messages"`
 	HistoryLines     int    `toml:"history_lines"`
+	LogBacklogLines  *int   `toml:"log_backlog_lines"`
 	ReconnectSecs    int    `toml:"reconnect_seconds"`
 }
 
@@ -48,6 +49,16 @@ func (g GeneralConfig) SendTypingEnabled() bool {
 
 func (g GeneralConfig) ShowJoinMessagesEnabled() bool {
 	return g.ShowJoinMessages == nil || *g.ShowJoinMessages
+}
+
+func (g GeneralConfig) LogBacklogLinesValue() int {
+	if g.LogBacklogLines == nil {
+		return 10
+	}
+	if *g.LogBacklogLines < 0 {
+		return 0
+	}
+	return *g.LogBacklogLines
 }
 
 type ThemeConfig struct {

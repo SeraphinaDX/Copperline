@@ -38,6 +38,7 @@ mouse = true
 show_typing = true
 send_typing = true
 history_lines = 2000
+log_backlog_lines = 10
 reconnect_seconds = 10
 
 [theme]
@@ -139,7 +140,8 @@ Global defaults and client-wide behavior.
 | `show_typing` | bool | `true` | Shows incoming IRCv3 `+typing` indicators in the message input title when the server supports `message-tags`. |
 | `send_typing` | bool | `true` | Sends your IRCv3 `+typing` state to compatible clients. Set to `false` if you do not want to reveal when you are composing a message. Slash commands never generate typing notifications. |
 | `show_join_messages` | bool | `true` | Shows `nick joined` lines in channel buffers. Set to `false` to hide JOIN messages while still tracking channel membership normally. |
-| `history_lines` | integer | `1000` | Maximum number of messages retained in each in-memory buffer. Values `<= 0` are reset to `1000`. |
+| `history_lines` | integer | `1000` | Maximum number of live messages retained in each in-memory buffer. Values `<= 0` are reset to `1000`. |
+| `log_backlog_lines` | integer | `10` | When a channel buffer is opened, display this many lines from the end of its plaintext log in the muted theme color before live messages. Set to `0` to disable. |
 | `reconnect_seconds` | integer | `10` | Delay between reconnect attempts. Values `<= 0` are reset to `10`. |
 
 ## IRCv3 typing indicators
@@ -228,6 +230,21 @@ logging = false
 ```
 
 When `logging = false`, Copperline does not create or append log files. Normal in-memory buffer history still works and is controlled separately by `history_lines`. Existing log files are left untouched.
+
+### Channel log backlog
+
+When logging is enabled, Copperline uses the log as a small persistent backlog when you enter a channel. By default it reads the final 10 meaningful lines and shows them in `theme.muted`, then appends new live IRC messages normally underneath:
+
+```toml
+[general]
+log_backlog_lines = 10
+```
+
+Legacy channel-housekeeping numerics (`315`, `324`, `329`, `332`, `333`, `353`, `366`) are skipped while reading the backlog, so old logs created before Copperline stopped logging/rendering that protocol noise do not bring it back.
+
+These grey lines are display-only: Copperline does not insert them back into the in-memory message model, re-log them, count them as unread, or send them through Lua event hooks. Reading is performed from the end of the file, so a large channel log does not have to be loaded into memory just to obtain the tail.
+
+Set `log_backlog_lines = 0` to disable the persistent backlog and use only the normal in-memory buffer history. The feature applies to channel buffers; server-status buffers and private queries keep their normal live scrollback behavior.
 
 `log_dir` is ignored while logging is disabled. Per-server and per-channel logging overrides are not currently supported.
 

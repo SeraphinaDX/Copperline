@@ -37,13 +37,15 @@ type App struct {
 	input      *widgets.Input
 	status     *widgets.Paragraph
 
-	sidebarKeys     []string
-	userNicks       []string
-	follow          bool
-	transcriptKey   string
-	transcriptReset bool
-	transcriptStart uint64
-	transcriptTotal uint64
+	sidebarKeys           []string
+	userNicks             []string
+	follow                bool
+	transcriptKey         string
+	transcriptReset       bool
+	transcriptStart       uint64
+	transcriptTotal       uint64
+	transcriptFromLog     bool
+	transcriptBacklogRows int
 
 	nickCompletionMatches []string
 	nickCompletionIndex   int
@@ -414,7 +416,7 @@ func (a *App) handleKey(id string) {
 	case "<End>":
 		a.input.Cursor = len([]rune(a.input.Text))
 		a.follow = true
-		a.transcript.ScrollBottom()
+		a.scrollTranscriptBottom()
 	case "<C-u>":
 		a.input.Text = ""
 		a.input.Cursor = 0
@@ -688,8 +690,21 @@ func (a *App) resumeFollowAtBottom() {
 	}
 	if a.transcript.SelectedRow >= len(a.transcript.Rows)-1 {
 		a.follow = true
-		a.transcript.ScrollBottom()
+		a.scrollTranscriptBottom()
 	}
+}
+
+// scrollTranscriptBottom is the only safe way Copperline should ask gotui's
+// List to follow the bottom. gotui v5.0.3 sets SelectedRow to -1 when Rows is
+// empty; on the next Draw that can make its private topRow negative and panic.
+func (a *App) scrollTranscriptBottom() {
+	if a.transcript == nil || len(a.transcript.Rows) == 0 {
+		if a.transcript != nil {
+			a.transcript.SelectedRow = 0
+		}
+		return
+	}
+	a.transcript.ScrollBottom()
 }
 
 func mousePayload(v any) (ui.Mouse, bool) {
@@ -1013,6 +1028,8 @@ func (a *App) rebuildCurrent() {
 		a.transcriptReset = false
 		a.transcriptStart = 0
 		a.transcriptTotal = 0
+		a.transcriptFromLog = false
+		a.transcriptBacklogRows = 0
 		a.users.Rows = nil
 		a.topic.Text = ""
 		a.input.Title = "Message"
@@ -1025,31 +1042,50 @@ func (a *App) rebuildCurrent() {
 	resetWidget := bufferChanged || a.transcriptReset
 	preservedSelected := -1
 	if resetWidget {
+		oldRows := append([]string(nil), a.transcript.Rows...)
 		oldSelected := a.transcript.SelectedRow
+		oldStart := a.transcriptStart
+		oldTotal := a.transcriptTotal
+		oldFromLog := a.transcriptFromLog
+		oldBacklogRows := a.transcriptBacklogRows
 		preserveSelection := !bufferChanged && a.transcriptReset && !a.follow
 
-		// gotui List has a private topRow field that ScrollBottom does not reset.
-		// Reusing one List across buffers can therefore carry a large buffer's
-		// scroll offset into a shorter buffer, making only its last row visible.
-		// A fresh widget gives the newly selected/resized transcript clean scroll
-		// state without reaching into gotui internals.
+		// gotui's List keeps its vertical topRow offset internally. Rebuilding
+		// the widget clears stale private scroll state on buffer changes/resizes.
 		a.transcript = a.newTranscriptList()
 		a.transcriptKey = key
 		a.transcriptReset = false
-		a.transcriptStart = 0
-		a.transcriptTotal = 0
+
 		if bufferChanged {
 			a.follow = true
-		}
-		if preserveSelection {
-			preservedSelected = oldSelected
+			a.transcriptStart = 0
+			a.transcriptTotal = 0
+			a.transcriptFromLog = false
+			a.transcriptBacklogRows = 0
+
+			// For channels, prefer a small disk-backed backlog over rebuilding the
+			// entire retained in-memory history. This mirrors classic IRC clients:
+			// opening a channel gives a little grey context, then live lines append
+			// normally underneath. Full history remains in the plaintext log.
+			a.loadChannelLogBacklog(b)
+		} else {
+			// A resize should not change what the user was reading. Carry the
+			// existing rendered rows into a fresh widget while clearing gotui's
+			// hidden scroll offset.
+			a.transcript.Rows = oldRows
+			a.transcriptStart = oldStart
+			a.transcriptTotal = oldTotal
+			a.transcriptFromLog = oldFromLog
+			a.transcriptBacklogRows = oldBacklogRows
+			if preserveSelection {
+				preservedSelected = oldSelected
+			}
 		}
 	}
 
-	// Pull only messages that arrived since the rows already cached by the TUI.
-	// Previously every redraw cloned and reformatted the entire scrollback.
-	// With thousands of retained messages that made display latency depend on
-	// how much history a channel happened to have.
+	// Pull only messages that arrived after the rows currently cached by the
+	// TUI. In log-backlog mode transcriptTotal is initialized to the buffer's
+	// current total, so old in-memory messages are intentionally skipped.
 	window := a.state.CurrentWindow(a.transcriptTotal)
 	if window == nil {
 		return
@@ -1057,45 +1093,98 @@ func (a *App) rebuildCurrent() {
 
 	a.input.Title = typingInputTitle(a.irc.TypingUsers(b.Server, b.Target))
 
-	fullReset := resetWidget ||
-		a.transcriptTotal < window.Start ||
-		a.transcriptTotal > window.Total ||
-		a.transcriptStart > window.Start ||
-		(a.transcriptTotal == 0 && window.Total > 0)
+	if a.transcriptFromLog {
+		// If an extremely large burst outran the retained in-memory window before
+		// the UI could consume it, refresh from the log tail rather than pulling a
+		// giant retained history back into the widget.
+		if a.transcriptTotal < window.Start || a.transcriptTotal > window.Total {
+			a.transcript.Rows = nil
+			a.transcriptFromLog = false
+			a.transcriptBacklogRows = 0
+			a.transcriptStart = 0
+			a.transcriptTotal = 0
+			if a.loadChannelLogBacklog(b) {
+				window = a.state.CurrentWindow(a.transcriptTotal)
+				if window == nil {
+					return
+				}
+			}
+		}
 
-	if window.Total == 0 {
-		a.transcript.Rows = []string{"No messages yet."}
-		a.transcriptStart = 0
-		a.transcriptTotal = 0
-	} else if fullReset {
-		rows := make([]string, 0, len(window.Messages))
-		for _, msg := range window.Messages {
-			rows = append(rows, a.theme.formatMessage(msg, a.cfg.General.Timestamp))
-		}
-		a.transcript.Rows = rows
-		a.transcriptStart = window.Start
-		a.transcriptTotal = window.Total
-	} else {
-		// If MaxLines evicted old messages, discard the matching cached rows.
-		if window.Start > a.transcriptStart {
-			drop := int(window.Start - a.transcriptStart)
-			if drop >= len(a.transcript.Rows) {
+		if a.transcriptFromLog {
+			if len(window.Messages) > 0 && len(a.transcript.Rows) == 1 && a.transcript.Rows[0] == "No messages yet." {
 				a.transcript.Rows = nil
-			} else {
-				a.transcript.Rows = a.transcript.Rows[drop:]
 			}
-			if !a.follow {
-				a.transcript.SelectedRow -= drop
+			for _, msg := range window.Messages {
+				a.transcript.Rows = append(a.transcript.Rows, a.theme.formatMessage(msg, a.cfg.General.Timestamp))
+			}
+			a.transcriptTotal = window.Total
+
+			// Keep the rendered list bounded even if a channel stays selected for a
+			// long session. The persistent log still contains everything.
+			maxRows := a.cfg.General.HistoryLines + a.transcriptBacklogRows
+			if maxRows > 0 && len(a.transcript.Rows) > maxRows {
+				drop := len(a.transcript.Rows) - maxRows
+				a.transcript.Rows = append([]string(nil), a.transcript.Rows[drop:]...)
+				if !a.follow {
+					a.transcript.SelectedRow -= drop
+				}
 			}
 		}
-		for _, msg := range window.Messages {
-			a.transcript.Rows = append(a.transcript.Rows, a.theme.formatMessage(msg, a.cfg.General.Timestamp))
+	}
+
+	if !a.transcriptFromLog {
+		// A resize/copy-mode exit rebuilds the gotui List object but carries the
+		// existing rendered rows forward. Do not treat that widget reset as a
+		// history reset: CurrentWindow(transcriptTotal) intentionally returns only
+		// newer messages, which is often empty and used to erase the carried rows.
+		fullReset := bufferChanged ||
+			a.transcriptTotal < window.Start ||
+			a.transcriptTotal > window.Total ||
+			a.transcriptStart > window.Start ||
+			(a.transcriptTotal == 0 && window.Total > 0)
+
+		if window.Total == 0 {
+			a.transcript.Rows = []string{"No messages yet."}
+			a.transcriptStart = 0
+			a.transcriptTotal = 0
+		} else if fullReset {
+			rows := make([]string, 0, len(window.Messages))
+			for _, msg := range window.Messages {
+				rows = append(rows, a.theme.formatMessage(msg, a.cfg.General.Timestamp))
+			}
+			a.transcript.Rows = rows
+			a.transcriptStart = window.Start
+			a.transcriptTotal = window.Total
+		} else {
+			// If MaxLines evicted old messages, discard the matching cached rows.
+			if window.Start > a.transcriptStart {
+				drop := int(window.Start - a.transcriptStart)
+				if drop >= len(a.transcript.Rows) {
+					a.transcript.Rows = nil
+				} else {
+					a.transcript.Rows = a.transcript.Rows[drop:]
+				}
+				if !a.follow {
+					a.transcript.SelectedRow -= drop
+				}
+			}
+			for _, msg := range window.Messages {
+				a.transcript.Rows = append(a.transcript.Rows, a.theme.formatMessage(msg, a.cfg.General.Timestamp))
+			}
+			a.transcriptStart = window.Start
+			a.transcriptTotal = window.Total
 		}
-		a.transcriptStart = window.Start
-		a.transcriptTotal = window.Total
 	}
 
 	a.transcript.Title = b.Server + " / " + b.Target
+	// gotui v5.0.3 List.ScrollBottom sets SelectedRow to len(Rows)-1. On an
+	// empty list that becomes -1, and Draw can copy it into the private topRow
+	// offset before indexing Rows[-1]. Keep the transcript non-empty at every
+	// render boundary, even if a future state/window edge case produces no rows.
+	if len(a.transcript.Rows) == 0 {
+		a.transcript.Rows = []string{"No messages yet."}
+	}
 	if preservedSelected >= 0 {
 		a.transcript.SelectedRow = preservedSelected
 	}
@@ -1106,7 +1195,7 @@ func (a *App) rebuildCurrent() {
 		a.transcript.SelectedRow = 0
 	}
 	if a.follow {
-		a.transcript.ScrollBottom()
+		a.scrollTranscriptBottom()
 	}
 
 	topic := ""
@@ -1146,6 +1235,44 @@ func (a *App) rebuildCurrent() {
 	a.status.Text = fmt.Sprintf(" %s  %s%s  nick:%s  IRCv3:%d caps  DCC:%d  Ctrl-N/P buffers  F6 jump  PgUp/PgDn scroll  /help ", b.Server, b.Target, joinState, nick, caps, offers)
 }
 
+// loadChannelLogBacklog initializes a newly selected channel from the last few
+// plaintext log lines. Returning true means the caller should treat the
+// transcript as disk-backed context plus only messages newer than b.Total.
+func (a *App) loadChannelLogBacklog(b *model.BufferInfo) bool {
+	if b == nil || !model.IsChannel(b.Target) || !a.cfg.General.LoggingEnabled() {
+		return false
+	}
+	n := a.cfg.General.LogBacklogLinesValue()
+	if n <= 0 {
+		return false
+	}
+
+	lines, err := a.logger.BacklogTail(b.Server, b.Target, n)
+	if err != nil {
+		return false
+	}
+	if len(lines) == 0 && b.Total > 0 {
+		// If logging failed or has not caught up for some reason, preserve the
+		// existing in-memory behavior instead of hiding available history.
+		return false
+	}
+
+	if len(lines) == 0 {
+		a.transcript.Rows = []string{"No messages yet."}
+	} else {
+		rows := make([]string, 0, len(lines))
+		for _, line := range lines {
+			rows = append(rows, a.theme.formatLogBacklog(line))
+		}
+		a.transcript.Rows = rows
+	}
+	a.transcriptFromLog = true
+	a.transcriptBacklogRows = len(lines)
+	a.transcriptStart = b.Total
+	a.transcriptTotal = b.Total
+	return true
+}
+
 func (a *App) execute(line string) {
 	b := a.state.Current()
 	if b == nil {
@@ -1156,7 +1283,7 @@ func (a *App) execute(line string) {
 		// server's echo of our message is brought into view even if manual
 		// scrolling previously left the transcript's follow flag stale.
 		a.follow = true
-		a.transcript.ScrollBottom()
+		a.scrollTranscriptBottom()
 		if err := a.irc.SendMessage(b.Server, b.Target, line); err != nil {
 			a.local(b.Server, b.Target, model.KindError, err.Error())
 		}

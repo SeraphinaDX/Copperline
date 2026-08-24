@@ -22,7 +22,7 @@ The code is deliberately split into an IRC core, TUI, buffer model, logging laye
 - **TLS and SASL** with PLAIN and EXTERNAL authentication
 - **Real DCC support** for sending and receiving files, plus incoming DCC CHAT
 - **Gotify notifications** for mentions and private messages without blocking the IRC client
-- **Persistent local logs** organized per network and buffer, with configurable timestamps and an option to disable logging entirely
+- **Persistent local logs** organized per network and buffer, with configurable timestamps, a muted 10-line channel backlog on open, and an option to disable logging entirely
 - **True-color theming** for nicks, message types, buffer state, borders, input, status bars, mentions, and more
 - **Traditional IRC usability** with nick lists, channel topics, CTCP, `/whois`, `/me`, `/notice`, `/raw`, and familiar slash commands
 - **Fast buffer navigation** with numbered buffers, `F6` direct jumping, and `Ctrl-N` / `Ctrl-P`
@@ -138,14 +138,16 @@ You can also select another configuration:
 
 ### Logging
 
-Logging is enabled by default. Disable all on-disk IRC logs while keeping normal in-memory scrollback with:
+Logging is enabled by default. When you open a channel, Copperline shows the last 10 meaningful persisted log lines in the muted theme color before new live traffic. This keeps channel context useful without rebuilding a large historical transcript. Configure or disable it with `general.log_backlog_lines`.
+
+Disable all on-disk IRC logs while keeping normal in-memory scrollback with:
 
 ```toml
 [general]
 logging = false
 ```
 
-See `CONFIGURATION.md` for log paths, permissions, and related options.
+See `CONFIGURATION.md` for log paths, permissions, backlog behavior, and related options.
 
 ### Gotify notifications
 
@@ -220,7 +222,7 @@ Nick colors are chosen deterministically from `nick_colors`, so the same nicknam
 
 Copperline embeds Lua for client-side automation and customization. Scripts load from `~/.config/copperline/scripts/*.lua` by default and can register slash commands, hook IRC events, send messages/notices, write to buffers, and use raw IRC. Use `/lua reload` to reload scripts without restarting the client.
 
-The complete API and examples live in [`SCRIPTING.md`](SCRIPTING.md).
+The complete API lives in [`SCRIPTING.md`](SCRIPTING.md), and the source tree includes ready-to-copy examples in [`scripts/`](scripts/).
 
 ## Layout
 
@@ -366,6 +368,7 @@ internal/logging/     local logs
 internal/gotify/      Gotify notification client
 internal/dcc/         DCC parsing and transfers
 internal/scripting/   embedded Lua runtime and plugin API
+scripts/              example Lua scripts
 internal/tui/         gotui interface and commands
 ```
 

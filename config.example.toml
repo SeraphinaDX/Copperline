@@ -13,6 +13,9 @@ send_typing = true
 # Set false to hide "nick joined" lines while still tracking channel membership.
 show_join_messages = true
 history_lines = 2000
+# Show this many persisted log lines in muted grey when a channel is opened.
+# Set to 0 to disable the disk-backed channel backlog.
+log_backlog_lines = 10
 reconnect_seconds = 10
 
 # Optional UI theme. Copperline uses these values by default if [theme] is omitted.
