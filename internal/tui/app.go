@@ -34,9 +34,11 @@ type App struct {
 	input      *widgets.Input
 	status     *widgets.Paragraph
 
-	sidebarKeys []string
-	userNicks   []string
-	follow      bool
+	sidebarKeys     []string
+	userNicks       []string
+	follow          bool
+	transcriptKey   string
+	transcriptReset bool
 
 	nickCompletionMatches []string
 	nickCompletionIndex   int
@@ -81,12 +83,7 @@ func (a *App) makeWidgets() {
 	a.sidebar.BorderRounded = true
 	a.theme.applyBlock(a.sidebar)
 
-	a.transcript = widgets.NewList()
-	a.transcript.Title = "Messages"
-	a.transcript.WrapText = true
-	a.transcript.BorderRounded = true
-	a.theme.applyBlock(a.transcript)
-	a.transcript.SelectedStyle = a.transcript.TextStyle
+	a.transcript = a.newTranscriptList()
 
 	a.users = widgets.NewList()
 	a.users.Title = "Users"
@@ -111,6 +108,16 @@ func (a *App) makeWidgets() {
 	a.status.Border = false
 	a.status.WrapText = false
 	a.theme.applyStatus(a.status)
+}
+
+func (a *App) newTranscriptList() *widgets.List {
+	list := widgets.NewList()
+	list.Title = "Messages"
+	list.WrapText = true
+	list.BorderRounded = true
+	a.theme.applyBlock(list)
+	list.SelectedStyle = list.TextStyle
+	return list
 }
 
 func (a *App) Run() error {
@@ -205,6 +212,13 @@ func (a *App) handleUIEvent(e ui.Event) {
 	switch e.Type {
 	case ui.ResizeEvent:
 		a.resetNickCompletion()
+		// gotui's List keeps its vertical topRow offset internally. A resize
+		// changes the number of visible rows without recalculating that offset,
+		// which can leave only the final message visible until the user scrolls.
+		// Rebuild the transcript widget on the next render to clear that stale
+		// private scroll state. rebuildCurrent preserves the selected row when
+		// the user was intentionally reading scrollback.
+		a.transcriptReset = true
 		return
 	case ui.MouseEvent:
 		a.resetNickCompletion()
@@ -749,12 +763,37 @@ func (a *App) rebuildCurrent() {
 	b := a.state.Current()
 	if b == nil {
 		a.transcript.Rows = []string{"No buffer selected"}
+		a.transcriptKey = ""
+		a.transcriptReset = false
 		a.users.Rows = nil
 		a.topic.Text = ""
 		a.input.Title = "Message"
 		a.status.Text = "Copperline"
 		return
 	}
+
+	key := model.Key(b.Server, b.Target)
+	bufferChanged := key != a.transcriptKey
+	if bufferChanged || a.transcriptReset {
+		oldSelected := a.transcript.SelectedRow
+		preserveSelection := !bufferChanged && a.transcriptReset && !a.follow
+
+		// gotui List has a private topRow field that ScrollBottom does not reset.
+		// Reusing one List across buffers can therefore carry a large buffer's
+		// scroll offset into a shorter buffer, making only its last row visible.
+		// A fresh widget gives the newly selected/resized transcript clean scroll
+		// state without reaching into gotui internals.
+		a.transcript = a.newTranscriptList()
+		a.transcriptKey = key
+		a.transcriptReset = false
+		if bufferChanged {
+			a.follow = true
+		}
+		if preserveSelection {
+			a.transcript.SelectedRow = oldSelected
+		}
+	}
+
 	a.input.Title = typingInputTitle(a.irc.TypingUsers(b.Server, b.Target))
 	rows := make([]string, 0, len(b.Messages))
 	for _, msg := range b.Messages {
@@ -765,6 +804,12 @@ func (a *App) rebuildCurrent() {
 	}
 	a.transcript.Rows = rows
 	a.transcript.Title = b.Server + " / " + b.Target
+	if a.transcript.SelectedRow >= len(rows) {
+		a.transcript.SelectedRow = len(rows) - 1
+	}
+	if a.transcript.SelectedRow < 0 {
+		a.transcript.SelectedRow = 0
+	}
 	if a.follow {
 		a.transcript.ScrollBottom()
 	}
