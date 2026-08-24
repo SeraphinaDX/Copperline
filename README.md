@@ -1,6 +1,10 @@
 # Copperline
 
-Copperline is a multi-server, multi-channel terminal IRC client written in Go using `github.com/metaspartan/gotui/v5`.
+Copperline is my modern terminal IRC client: a multi-server, multi-channel client written in **Go** with `github.com/metaspartan/gotui/v5`. I wanted something that still feels like a traditional IRC client while taking advantage of a modern language, a responsive TUI, and the parts of IRCv3 that make IRC nicer to use today.
+
+Go is a particularly good fit for Copperline. It compiles to a fast native executable, has a **garbage-collected runtime**, and is designed for concurrency. Copperline uses goroutines for work that should happen independently—IRC connections, reconnect handling, DCC transfers, notifications, and timers—while Go's **multithreaded runtime** can execute that work across OS threads and CPU cores. The result is a client that can be doing several things at once without turning the UI architecture into a maze.
+
+Copperline is not intended to be a tiny IRC demo. It has grown into a full everyday client with multiple networks, IRCv3, SASL, DCC, scrollback and logging, Gotify notifications, typing indicators, mouse support, true-color themes, nickname completion, direct buffer jumping, CTCP, and the usual IRC commands I actually want to use.
 
 ![Copperline main interface](screenshots/screenshot1.avif)
 
@@ -8,35 +12,26 @@ Copperline is a multi-server, multi-channel terminal IRC client written in Go us
 
 ![Copperline Gotify notifications](screenshots/screenshot3.avif)
 
-This is a usable first implementation with a deliberately separated IRC core, TUI, buffer model, logging layer, configuration loader, and DCC manager so the client can grow without becoming one giant `main.go`.
+The code is deliberately split into an IRC core, TUI, buffer model, logging layer, configuration loader, notification client, and DCC manager. Go makes that separation pleasantly straightforward, and keeps Copperline from becoming one giant `main.go` as it grows.
 
 ## Features
 
-- Multiple IRC servers connected at the same time
-- Multiple channels and private-message/query buffers
-- Numbered buffers with WeeChat-style `F6` direct jumping
-- TOML configuration
-- Configurable true-color theme with colored nicks, message types, buffer state, borders, input and status bars
-- TLS IRC connections
-- SASL PLAIN and EXTERNAL through girc
-- IRCv3 CAP negotiation and message tags
-- IRCv3 server-time timestamps
-- IRCv3 echo-message handling
-- IRCv3 typing indicators (`+typing`) for channels and private messages
-- IRCv3 account/away/chghost/extended-join state through girc
-- Requests modern capabilities including batch, labeled-response, standard-replies, chathistory, read-marker, multiline and related draft caps
-- `/history` support using IRCv3 CHATHISTORY
-- Optional local per-network/per-buffer logs
-- Optional Gotify notifications for incoming mentions and private messages
-- DCC SEND receive/send
-- Incoming DCC CHAT acceptance
-- Mouse wheel scrollback
-- Mouse channel/query selection
-- Mouse nick selection to open a query
-- Nick list
-- Channel topics
-- Automatic reconnect
-- Raw IRC command access for extensions not yet given a dedicated command
+- **Native Go application** with garbage collection, goroutines, and a multithreaded runtime
+- **Multiple IRC networks at once**, each with multiple channels and private-message/query buffers
+- **Modern IRCv3 support** with CAP negotiation, message tags, server-time, echo-message, typing indicators, CHATHISTORY, account/away/chghost state, and more
+- **TLS and SASL** with PLAIN and EXTERNAL authentication
+- **Real DCC support** for sending and receiving files, plus incoming DCC CHAT
+- **Gotify notifications** for mentions and private messages without blocking the IRC client
+- **Persistent local logs** organized per network and buffer, with configurable timestamps and an option to disable logging entirely
+- **True-color theming** for nicks, message types, buffer state, borders, input, status bars, mentions, and more
+- **Traditional IRC usability** with nick lists, channel topics, CTCP, `/whois`, `/me`, `/notice`, `/raw`, and familiar slash commands
+- **Fast buffer navigation** with numbered buffers, `F6` direct jumping, and `Ctrl-N` / `Ctrl-P`
+- **Nickname completion** with channel-aware Tab completion and match cycling
+- **Mouse support** for scrollback, buffer selection, and opening private queries from the nick list
+- **Automatic reconnect** and independent per-server connection handling
+- **Configurable JOIN-message noise**, typing privacy, logging, mouse behavior, notifications, and other day-to-day preferences
+- **TOML configuration** with environment-variable support for passwords and tokens
+- Raw IRC access remains available for network-specific commands and newer extensions that do not yet have dedicated UI
 
 ## Requirements
 
