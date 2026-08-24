@@ -54,6 +54,10 @@ type App struct {
 	typingSentState string
 	typingLastSent  time.Time
 	typingLastEdit  time.Time
+
+	lastNickClickServer string
+	lastNickClickNick   string
+	lastNickClickAt     time.Time
 }
 
 func New(cfg *config.Config) *App {
@@ -395,18 +399,19 @@ func (a *App) handleMouse(e ui.Event) {
 	}
 
 	switch e.ID {
-	case "MouseWheelUp":
+	case "<MouseWheelUp>":
 		if m.X >= left {
 			a.follow = false
 			a.transcript.ScrollAmount(-3)
 		}
-	case "MouseWheelDown":
+	case "<MouseWheelDown>":
 		if m.X >= left {
 			a.transcript.ScrollAmount(3)
 			a.resumeFollowAtBottom()
 		}
-	case "MouseLeft":
+	case "<MouseLeft>":
 		if m.X < left && m.Y > 0 {
+			a.clearNickClick()
 			row := m.Y - 1
 			if row >= 0 && row < len(a.sidebarKeys) {
 				if a.state.SelectKey(a.sidebarKeys[row]) {
@@ -422,13 +427,46 @@ func (a *App) handleMouse(e ui.Event) {
 				row := m.Y - 1
 				if row >= 0 && row < len(a.userNicks) {
 					if b := a.state.Current(); b != nil {
-						a.state.Select(b.Server, a.userNicks[row])
-						a.follow = true
+						nick := a.userNicks[row]
+						if a.nickDoubleClicked(b.Server, nick) {
+							a.state.Select(b.Server, nick)
+							a.follow = true
+						}
+						return
 					}
 				}
 			}
 		}
+		a.clearNickClick()
 	}
+}
+
+const nickDoubleClickWindow = 500 * time.Millisecond
+
+// nickDoubleClicked records a click on a nick and reports whether it completes
+// a double click. Both clicks must target the same nick on the same server and
+// occur close together; otherwise the newest click becomes the first click of
+// a new pair.
+func (a *App) nickDoubleClicked(server, nick string) bool {
+	now := time.Now()
+	if a.lastNickClickServer == server &&
+		a.lastNickClickNick == nick &&
+		!a.lastNickClickAt.IsZero() &&
+		now.Sub(a.lastNickClickAt) <= nickDoubleClickWindow {
+		a.clearNickClick()
+		return true
+	}
+
+	a.lastNickClickServer = server
+	a.lastNickClickNick = nick
+	a.lastNickClickAt = now
+	return false
+}
+
+func (a *App) clearNickClick() {
+	a.lastNickClickServer = ""
+	a.lastNickClickNick = ""
+	a.lastNickClickAt = time.Time{}
 }
 
 // resumeFollowAtBottom restores live-follow once manual downward scrolling

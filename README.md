@@ -233,7 +233,7 @@ Nickname completion is channel-aware. For example, typing `ali` at the start of 
 
 Buffer numbers are shown in the left sidebar and follow the same order used by `Ctrl-N` and `Ctrl-P`. To jump directly, press `F6`, type the displayed number, and press `Enter`. For example, if `#golang` is buffer `7`, use `F6`, `7`, `Enter`. Press `Escape` to cancel. Buffer numbers can change when buffers are opened or closed, so the sidebar is the source of truth. `Tab` remains dedicated to nickname completion.
 
-Mouse controls are enabled when `general.mouse = true`. Click a server/channel/query in the sidebar, click a nick to open a query, and use the wheel over the transcript to scroll.
+Mouse controls are enabled when `general.mouse = true`. Click a server/channel/query in the sidebar, double-click a nick to open a private query, and use the wheel over the transcript to scroll.
 
 ## Commands
 

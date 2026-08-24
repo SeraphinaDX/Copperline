@@ -131,7 +131,7 @@ Global defaults and client-wide behavior.
 | `logging` | bool | `true` | Enables or disables all on-disk IRC logging. In-memory buffer history is unaffected. |
 | `log_dir` | string | `"~/.local/state/copperline/logs"` | Root directory for IRC logs when logging is enabled. `~` and `~/...` are expanded. |
 | `timestamp` | string | `"15:04"` | Go time-layout string used for displayed messages and logs. |
-| `mouse` | bool | `false` | Enables gotui mouse handling, including clickable buffers/nicks and mouse-wheel scrollback. |
+| `mouse` | bool | `false` | Enables gotui mouse handling, including clickable buffers, double-clickable nicks for private queries, and mouse-wheel scrollback. |
 | `show_typing` | bool | `true` | Shows incoming IRCv3 `+typing` indicators in the message input title when the server supports `message-tags`. |
 | `send_typing` | bool | `true` | Sends your IRCv3 `+typing` state to compatible clients. Set to `false` if you do not want to reveal when you are composing a message. Slash commands never generate typing notifications. |
 | `show_join_messages` | bool | `true` | Shows `nick joined` lines in channel buffers. Set to `false` to hide JOIN messages while still tracking channel membership normally. |
