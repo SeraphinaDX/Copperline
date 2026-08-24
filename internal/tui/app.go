@@ -812,6 +812,11 @@ func (a *App) execute(line string) {
 		return
 	}
 	if !strings.HasPrefix(line, "/") {
+		// Sending a message always resumes live-follow. This guarantees the
+		// server's echo of our message is brought into view even if manual
+		// scrolling previously left the transcript's follow flag stale.
+		a.follow = true
+		a.transcript.ScrollBottom()
 		if err := a.irc.SendMessage(b.Server, b.Target, line); err != nil {
 			a.local(b.Server, b.Target, model.KindError, err.Error())
 		}
