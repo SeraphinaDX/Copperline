@@ -50,6 +50,12 @@ nick_colors = [
     "#72c7ef", "#d9a7ff", "#ff9ecb", "#d99058",
 ]
 
+# Optional embedded Lua scripting. Scripts are loaded alphabetically from
+# this directory at startup and can be reloaded with /lua reload.
+[scripting]
+enabled = true
+dir = "~/.config/copperline/scripts"
+
 [dcc]
 enabled = true
 download_dir = "~/Downloads"

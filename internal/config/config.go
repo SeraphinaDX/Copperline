@@ -11,11 +11,12 @@ import (
 )
 
 type Config struct {
-	General GeneralConfig  `toml:"general"`
-	Theme   ThemeConfig    `toml:"theme"`
-	DCC     DCCConfig      `toml:"dcc"`
-	Gotify  GotifyConfig   `toml:"gotify"`
-	Servers []ServerConfig `toml:"server"`
+	General   GeneralConfig   `toml:"general"`
+	Theme     ThemeConfig     `toml:"theme"`
+	DCC       DCCConfig       `toml:"dcc"`
+	Gotify    GotifyConfig    `toml:"gotify"`
+	Scripting ScriptingConfig `toml:"scripting"`
+	Servers   []ServerConfig  `toml:"server"`
 }
 
 type GeneralConfig struct {
@@ -111,6 +112,15 @@ func (g GotifyConfig) PriorityValue() int {
 	return *g.Priority
 }
 
+type ScriptingConfig struct {
+	Enabled *bool  `toml:"enabled"`
+	Dir     string `toml:"dir"`
+}
+
+func (s ScriptingConfig) EnabledValue() bool {
+	return s.Enabled == nil || *s.Enabled
+}
+
 type ServerConfig struct {
 	Name        string   `toml:"name"`
 	Host        string   `toml:"host"`
@@ -193,6 +203,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Gotify.TimeoutSeconds <= 0 {
 		c.Gotify.TimeoutSeconds = 5
+	}
+	if c.Scripting.Dir == "" {
+		c.Scripting.Dir = "~/.config/copperline/scripts"
 	}
 	for i := range c.Servers {
 		s := &c.Servers[i]

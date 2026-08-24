@@ -31,6 +31,7 @@ The code is deliberately split into an IRC core, TUI, buffer model, logging laye
 - **Automatic reconnect** and independent per-server connection handling
 - **Configurable JOIN-message noise**, typing privacy, logging, mouse behavior, notifications, and other day-to-day preferences
 - **TOML configuration** with environment-variable support for passwords and tokens
+- **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - Raw IRC access remains available for network-specific commands and newer extensions that do not yet have dedicated UI
 
 ## Requirements
@@ -47,6 +48,8 @@ go build -o Copperline ./cmd/copperline
 ## Configuration
 
 For the complete TOML reference, defaults, inheritance rules, theme options, DCC, SASL, and IRCv3 capability settings, see [`CONFIGURATION.md`](CONFIGURATION.md).
+
+For Lua scripts, custom commands, event hooks, and the complete scripting API, see [`SCRIPTING.md`](SCRIPTING.md).
 
 Copperline defaults to:
 
@@ -213,6 +216,12 @@ nick_colors = ["#ff7b72", "#f6c177", "#8bd49c", "#64d8cb", "#72c7ef", "#d9a7ff"]
 
 Nick colors are chosen deterministically from `nick_colors`, so the same nickname keeps the same color. Theme changes affect only the TUI; log files remain plain text. See `config.example.toml` for the full default palette.
 
+## Lua scripting
+
+Copperline embeds Lua for client-side automation and customization. Scripts load from `~/.config/copperline/scripts/*.lua` by default and can register slash commands, hook IRC events, send messages/notices, write to buffers, and use raw IRC. Use `/lua reload` to reload scripts without restarting the client.
+
+The complete API and examples live in [`SCRIPTING.md`](SCRIPTING.md).
+
 ## Layout
 
 The left panel contains every configured server and its channel/query buffers. Every visible buffer is numbered in sidebar order so it can be selected directly. The middle is the current conversation. Wide terminals also get a nick list on the right. The input line is at the bottom.
@@ -225,6 +234,7 @@ Keyboard controls:
 - `Escape`: cancel an active F6 buffer jump
 - `Tab`: complete a nickname at the cursor; repeated Tab cycles matches
 - `PageUp` / `PageDown`: scroll transcript
+- `Alt-L`: toggle bare/copy mode for easy terminal text selection
 - `End`: return to following the newest messages
 - `Ctrl-U`: clear input
 - `Ctrl-C`: quit
@@ -234,6 +244,8 @@ Nickname completion is channel-aware. For example, typing `ali` at the start of 
 Buffer numbers are shown in the left sidebar and follow the same order used by `Ctrl-N` and `Ctrl-P`. To jump directly, press `F6`, type the displayed number, and press `Enter`. For example, if `#golang` is buffer `7`, use `F6`, `7`, `Enter`. Press `Escape` to cancel. Buffer numbers can change when buffers are opened or closed, so the sidebar is the source of truth. `Tab` remains dedicated to nickname completion.
 
 Mouse controls are enabled when `general.mouse = true`. Click a server/channel/query in the sidebar, double-click a nick to open a private query, and use the wheel over the transcript to scroll.
+
+Press `Alt-L` for a WeeChat-style bare/copy view. Copperline temporarily hides the sidebar, topic, nick list, input, status bar, and transcript borders; disables terminal mouse reporting; and freezes redraws so you can select and copy text with the terminal normally. IRC connections, logging, DCC, Gotify notifications, and incoming message state continue in the background. Press `Alt-L` again to restore the full interface and catch up.
 
 ## Commands
 
@@ -262,6 +274,9 @@ Mouse controls are enabled when `general.mouse = true`. Click a server/channel/q
 /dcc send nick /path/to/file
 /gotify status
 /gotify test
+/lua list
+/lua reload
+/lua eval <code>
 /close
 /quit [reason]
 ```
@@ -350,6 +365,7 @@ internal/irc/         multi-server IRC + IRCv3 manager
 internal/logging/     local logs
 internal/gotify/      Gotify notification client
 internal/dcc/         DCC parsing and transfers
+internal/scripting/   embedded Lua runtime and plugin API
 internal/tui/         gotui interface and commands
 ```
 

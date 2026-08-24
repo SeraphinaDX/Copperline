@@ -27,6 +27,16 @@ type Manager struct {
 	typingMu   sync.Mutex
 	typing     map[string]typingEntry
 	typingSent map[string]time.Time
+	eventSink  func(Event)
+}
+
+type Event struct {
+	Time    time.Time
+	Server  string
+	Command string
+	Source  string
+	Params  []string
+	Tags    map[string]string
 }
 
 type typingEntry struct {
@@ -190,6 +200,21 @@ func (m *Manager) allowCTCPReply(server string, ce girc.CTCPEvent) bool {
 		}
 	}
 	return true
+}
+
+func (m *Manager) SetEventSink(sink func(Event)) {
+	m.mu.Lock()
+	m.eventSink = sink
+	m.mu.Unlock()
+}
+
+func (m *Manager) emitEvent(event Event) {
+	m.mu.RLock()
+	sink := m.eventSink
+	m.mu.RUnlock()
+	if sink != nil {
+		sink(event)
+	}
 }
 
 func (m *Manager) Start() {
@@ -757,6 +782,14 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 	if e.Source != nil && e.Source.Name != "" {
 		source = e.Source.Name
 	}
+	m.emitEvent(Event{
+		Time:    when,
+		Server:  server,
+		Command: e.Command,
+		Source:  source,
+		Params:  append([]string(nil), e.Params...),
+		Tags:    tags,
+	})
 
 	switch e.Command {
 	case girc.CONNECTED:

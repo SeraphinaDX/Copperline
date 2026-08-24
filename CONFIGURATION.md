@@ -86,6 +86,10 @@ private_messages = true
 priority = 5
 timeout_seconds = 5
 
+[scripting]
+enabled = true
+dir = "~/.config/copperline/scripts"
+
 [[server]]
 name = "libera"
 host = "irc.libera.chat"
@@ -226,6 +230,27 @@ logging = false
 When `logging = false`, Copperline does not create or append log files. Normal in-memory buffer history still works and is controlled separately by `history_lines`. Existing log files are left untouched.
 
 `log_dir` is ignored while logging is disabled. Per-server and per-channel logging overrides are not currently supported.
+
+---
+
+# `[scripting]`
+
+Controls the embedded Lua scripting subsystem. Full Lua API documentation is intentionally kept in [`SCRIPTING.md`](SCRIPTING.md).
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `enabled` | bool | `true` | Enables Lua scripting and automatic loading of `.lua` files. |
+| `dir` | string | `"~/.config/copperline/scripts"` | Directory containing Lua scripts. `~` and `~/...` are expanded. |
+
+Example:
+
+```toml
+[scripting]
+enabled = true
+dir = "~/.config/copperline/scripts"
+```
+
+Copperline loads `.lua` files in alphabetical filename order. If the directory does not exist, it is created with mode `0700`. See [`SCRIPTING.md`](SCRIPTING.md) for `/lua` commands, custom slash commands, event hooks, API calls, examples, concurrency behavior, and security notes.
 
 ---
 

@@ -13,6 +13,7 @@ import (
 	ircclient "copperline/internal/irc"
 	"copperline/internal/logging"
 	"copperline/internal/model"
+	"copperline/internal/scripting"
 
 	ui "github.com/metaspartan/gotui/v5"
 	"github.com/metaspartan/gotui/v5/widgets"
@@ -24,6 +25,7 @@ type App struct {
 	irc     *ircclient.Manager
 	logger  *logging.Logger
 	gotify  *gotifynotify.Notifier
+	scripts *scripting.Engine
 	theme   uiTheme
 	stopped atomic.Bool
 
@@ -58,6 +60,8 @@ type App struct {
 	lastNickClickServer string
 	lastNickClickNick   string
 	lastNickClickAt     time.Time
+
+	copyMode bool
 }
 
 func New(cfg *config.Config) *App {
@@ -76,6 +80,31 @@ func New(cfg *config.Config) *App {
 		}
 	}
 	a.irc = ircclient.New(cfg, a.onMessage)
+	if cfg.Scripting.EnabledValue() {
+		a.scripts = scripting.New(config.ExpandPath(cfg.Scripting.Dir), scripting.Host{
+			Print: func(server, target, text string) {
+				a.local(server, target, model.KindSystem, text)
+			},
+			Message: func(server, target, text string) error {
+				return a.irc.SendMessage(server, target, text)
+			},
+			Notice: func(server, target, text string) error {
+				return a.irc.Notice(server, target, text)
+			},
+			Raw: func(server, line string) error {
+				return a.irc.Raw(server, line)
+			},
+			Active: func() scripting.Context {
+				b := a.state.Current()
+				if b == nil {
+					return scripting.Context{}
+				}
+				return scripting.Context{Server: b.Server, Target: b.Target, Nick: a.irc.CurrentNick(b.Server)}
+			},
+			CurrentNick: a.irc.CurrentNick,
+		})
+		a.irc.SetEventSink(a.onIRCEvent)
+	}
 	a.makeWidgets()
 	return a
 }
@@ -129,8 +158,22 @@ func (a *App) Run() error {
 		return err
 	}
 	defer ui.Close()
-	defer a.irc.Stop("Copperline exiting")
 
+	if a.scripts != nil {
+		defer a.scripts.Close()
+		loaded, err := a.scripts.Reload()
+		b := a.state.Current()
+		server, target := "", "*server*"
+		if b != nil {
+			server, target = b.Server, b.Target
+		}
+		if err != nil {
+			a.local(server, target, model.KindError, "Lua: "+err.Error())
+		} else if len(loaded) > 0 {
+			a.local(server, target, model.KindSystem, fmt.Sprintf("Lua: loaded %d script(s)", len(loaded)))
+		}
+	}
+	defer a.irc.Stop("Copperline exiting")
 	a.irc.Start()
 	a.render()
 	events := ui.PollEvents()
@@ -141,10 +184,17 @@ func (a *App) Run() error {
 		select {
 		case e := <-events:
 			a.handleUIEvent(e)
-			a.render()
+			if !a.copyMode {
+				a.render()
+			}
 		case <-ticker.C:
 			a.syncOutgoingTyping()
-			a.render()
+			// Bare/copy mode deliberately freezes the terminal display so
+			// native text selection is not disturbed by periodic redraws.
+			// IRC state, logging, Gotify, DCC, and timers continue normally.
+			if !a.copyMode {
+				a.render()
+			}
 		}
 	}
 	return nil
@@ -164,6 +214,31 @@ func (a *App) onMessage(msg model.Message) {
 	a.state.Add(msg)
 	_ = a.logger.Write(msg)
 	a.notifyGotify(msg, self)
+	if a.scripts != nil && (msg.Kind == model.KindMessage || msg.Kind == model.KindAction || msg.Kind == model.KindDCC) {
+		a.scripts.EmitEvent(scripting.Event{
+			Time:    msg.Time,
+			Server:  msg.Server,
+			Command: string(msg.Kind),
+			Source:  msg.Nick,
+			Params:  []string{msg.Target, msg.Text},
+			Tags:    msg.Tags,
+		})
+	}
+}
+
+func (a *App) onIRCEvent(ev ircclient.Event) {
+	if a.scripts == nil {
+		return
+	}
+	a.scripts.EmitEvent(scripting.Event{
+		Time:    ev.Time,
+		Server:  ev.Server,
+		Command: ev.Command,
+		Source:  ev.Source,
+		Params:  ev.Params,
+		Tags:    ev.Tags,
+		Raw:     true,
+	})
 }
 
 func (a *App) notifyGotify(msg model.Message, self string) {
@@ -213,6 +288,26 @@ func (a *App) local(server, target string, kind model.Kind, text string) {
 }
 
 func (a *App) handleUIEvent(e ui.Event) {
+	// In bare/copy mode the terminal owns the mouse and Copperline leaves the
+	// displayed transcript frozen. Only the toggle, quit, and resize need to be
+	// handled until the normal interface is restored.
+	if a.copyMode {
+		if e.Type == ui.KeyboardEvent {
+			if isCopyModeKey(e.ID) {
+				a.setCopyMode(false)
+				return
+			}
+			if e.ID == "<C-c>" {
+				a.stopped.Store(true)
+			}
+			return
+		}
+		if e.Type == ui.ResizeEvent {
+			a.renderCopyMode()
+		}
+		return
+	}
+
 	switch e.Type {
 	case ui.ResizeEvent:
 		a.resetNickCompletion()
@@ -256,6 +351,8 @@ func (a *App) handleKey(id string) {
 	}
 
 	switch id {
+	case "<M-l>", "<M-L>", "<A-l>", "<A-L>", "<Alt-l>", "<Alt-L>":
+		a.setCopyMode(true)
 	case "<C-c>":
 		a.stopped.Store(true)
 	case "<Enter>":
@@ -310,6 +407,76 @@ func (a *App) handleKey(id string) {
 			}
 		}
 	}
+}
+
+// isCopyModeKey accepts the Meta/Alt spellings used by gotui/tcell and a few
+// terminal backends. gotui normally reports Alt+L as <M-l>.
+func isCopyModeKey(id string) bool {
+	switch id {
+	case "<M-l>", "<M-L>", "<A-l>", "<A-L>", "<Alt-l>", "<Alt-L>":
+		return true
+	default:
+		return false
+	}
+}
+
+// setCopyMode implements a WeeChat-style bare display. The normal widget
+// layout is replaced by a borderless full-screen snapshot of the current
+// transcript and terminal mouse reporting is disabled so the terminal can do
+// native click-and-drag selection. While active, the main loop intentionally
+// does not redraw the screen; network activity continues in the background.
+func (a *App) setCopyMode(enabled bool) {
+	if a.copyMode == enabled {
+		return
+	}
+	a.copyMode = enabled
+	a.resetNickCompletion()
+	a.jumpMode = false
+	a.jumpDigits = ""
+
+	if enabled {
+		if ui.DefaultBackend.Screen != nil {
+			ui.DefaultBackend.Screen.DisableMouse()
+		}
+		ui.Clear()
+		a.renderCopyMode()
+		return
+	}
+
+	// gotui enables terminal mouse reporting during Init, so restore the same
+	// backend state it had before entering bare mode. Copperline's general.mouse
+	// setting still decides whether received mouse events are acted upon.
+	if ui.DefaultBackend.Screen != nil {
+		ui.DefaultBackend.Screen.EnableMouse()
+	}
+	ui.Clear()
+	// Rebuild with clean gotui scroll state because the transcript geometry was
+	// temporarily replaced by the full-screen bare view.
+	a.transcriptReset = true
+}
+
+func (a *App) renderCopyMode() {
+	w, h := ui.TerminalDimensions()
+	if w < 1 || h < 1 {
+		return
+	}
+
+	// Refresh the source rows once on entry/resize, then render an independent
+	// widget so the normal transcript's scroll position and private topRow state
+	// are untouched.
+	a.rebuildCurrent()
+	bare := widgets.NewList()
+	bare.Border = false
+	bare.WrapText = true
+	bare.Rows = append([]string(nil), a.transcript.Rows...)
+	bare.TextStyle = a.transcript.TextStyle
+	bare.SelectedStyle = bare.TextStyle
+	bare.SetRect(0, 0, w, h)
+	if len(bare.Rows) > 0 {
+		bare.SelectedRow = len(bare.Rows) - 1
+		bare.ScrollBottom()
+	}
+	ui.Render(bare)
 }
 
 // syncOutgoingTyping translates edits in Copperline's input box into the
@@ -913,7 +1080,7 @@ func (a *App) execute(line string) {
 
 	switch cmd {
 	case "help":
-		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /ctcp /nick /topic /whois /raw /history /markread /caps /dcc /gotify /close /quit")
+		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /ctcp /nick /topic /whois /raw /history /markread /caps /dcc /gotify /lua /close /quit")
 	case "server":
 		if arg1 == "" {
 			a.local(b.Server, b.Target, model.KindSystem, "servers: "+strings.Join(a.irc.ServerNames(), ", "))
@@ -1057,6 +1224,8 @@ func (a *App) execute(line string) {
 		a.executeDCC(b, arg1, tail)
 	case "gotify":
 		a.executeGotify(b, arg1)
+	case "lua":
+		a.executeLua(b, arg1, tail)
 	case "close":
 		if b.Target != "*server*" {
 			a.state.Close(b.Server, b.Target)
@@ -1065,7 +1234,51 @@ func (a *App) execute(line string) {
 		a.irc.Stop(strings.TrimSpace(rest))
 		a.stopped.Store(true)
 	default:
+		if a.scripts != nil {
+			handled, err := a.scripts.Command(cmd, rest, scripting.Context{Server: b.Server, Target: b.Target, Nick: a.irc.CurrentNick(b.Server)})
+			if err != nil {
+				a.local(b.Server, b.Target, model.KindError, "Lua /"+cmd+": "+err.Error())
+				return
+			}
+			if handled {
+				return
+			}
+		}
 		a.local(b.Server, b.Target, model.KindError, "unknown command /"+cmd+" — try /help")
+	}
+}
+
+func (a *App) executeLua(b *model.Buffer, sub, tail string) {
+	if a.scripts == nil {
+		a.local(b.Server, b.Target, model.KindError, "Lua scripting is disabled")
+		return
+	}
+	switch strings.ToLower(sub) {
+	case "list":
+		loaded := a.scripts.List()
+		if len(loaded) == 0 {
+			a.local(b.Server, b.Target, model.KindSystem, "Lua: no scripts loaded")
+			return
+		}
+		a.local(b.Server, b.Target, model.KindSystem, "Lua scripts: "+strings.Join(loaded, ", "))
+	case "reload":
+		loaded, err := a.scripts.Reload()
+		if err != nil {
+			a.local(b.Server, b.Target, model.KindError, "Lua reload: "+err.Error())
+			return
+		}
+		a.local(b.Server, b.Target, model.KindSystem, fmt.Sprintf("Lua: loaded %d script(s)", len(loaded)))
+	case "eval":
+		code := strings.TrimSpace(tail)
+		if code == "" {
+			a.local(b.Server, b.Target, model.KindError, "usage: /lua eval <code>")
+			return
+		}
+		if err := a.scripts.Eval(code); err != nil {
+			a.local(b.Server, b.Target, model.KindError, "Lua eval: "+err.Error())
+		}
+	default:
+		a.local(b.Server, b.Target, model.KindSystem, "usage: /lua list | /lua reload | /lua eval <code>")
 	}
 }
 
