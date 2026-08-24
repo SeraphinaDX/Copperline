@@ -28,6 +28,7 @@ type App struct {
 	scripts *scripting.Engine
 	theme   uiTheme
 	stopped atomic.Bool
+	redraw  chan struct{}
 
 	sidebar    *widgets.List
 	transcript *widgets.List
@@ -41,6 +42,8 @@ type App struct {
 	follow          bool
 	transcriptKey   string
 	transcriptReset bool
+	transcriptStart uint64
+	transcriptTotal uint64
 
 	nickCompletionMatches []string
 	nickCompletionIndex   int
@@ -72,6 +75,7 @@ func New(cfg *config.Config) *App {
 		gotify: gotifynotify.New(cfg.Gotify),
 		theme:  newUITheme(cfg.Theme),
 		follow: true,
+		redraw: make(chan struct{}, 1),
 	}
 	for _, s := range cfg.Servers {
 		a.state.Ensure(s.Name, "*server*")
@@ -95,7 +99,7 @@ func New(cfg *config.Config) *App {
 				return a.irc.Raw(server, line)
 			},
 			Active: func() scripting.Context {
-				b := a.state.Current()
+				b := a.state.CurrentInfo()
 				if b == nil {
 					return scripting.Context{}
 				}
@@ -105,6 +109,9 @@ func New(cfg *config.Config) *App {
 		})
 		a.irc.SetEventSink(a.onIRCEvent)
 	}
+	// Wake the UI after Manager has fully applied IRC state changes. Transcript
+	// messages also wake immediately from onMessage after state.Add.
+	a.irc.SetUpdateSink(a.requestRedraw)
 	a.makeWidgets()
 	return a
 }
@@ -162,7 +169,7 @@ func (a *App) Run() error {
 	if a.scripts != nil {
 		defer a.scripts.Close()
 		loaded, err := a.scripts.Reload()
-		b := a.state.Current()
+		b := a.state.CurrentInfo()
 		server, target := "", "*server*"
 		if b != nil {
 			server, target = b.Server, b.Target
@@ -177,8 +184,12 @@ func (a *App) Run() error {
 	a.irc.Start()
 	a.render()
 	events := ui.PollEvents()
-	ticker := time.NewTicker(100 * time.Millisecond)
-	defer ticker.Stop()
+	// Typing-state maintenance still needs a small timer, but terminal redraws
+	// are event-driven. The old 100 ms full-render loop repeatedly copied and
+	// reformatted scrollback even when nothing changed, which made busy/long
+	// buffers feel inconsistently delayed.
+	typingTicker := time.NewTicker(250 * time.Millisecond)
+	defer typingTicker.Stop()
 
 	for !a.stopped.Load() {
 		select {
@@ -187,13 +198,14 @@ func (a *App) Run() error {
 			if !a.copyMode {
 				a.render()
 			}
-		case <-ticker.C:
-			a.syncOutgoingTyping()
-			// Bare/copy mode deliberately freezes the terminal display so
-			// native text selection is not disturbed by periodic redraws.
-			// IRC state, logging, Gotify, DCC, and timers continue normally.
+		case <-a.redraw:
 			if !a.copyMode {
 				a.render()
+			}
+		case <-typingTicker.C:
+			a.syncOutgoingTyping()
+			if !a.copyMode {
+				a.refreshTypingIndicator()
 			}
 		}
 	}
@@ -212,6 +224,10 @@ func (a *App) onMessage(msg model.Message) {
 		}
 	}
 	a.state.Add(msg)
+	// Wake the UI immediately after the message becomes visible in state. Do
+	// this before disk logging, notifications, or script callbacks so those
+	// side effects can never hold up the on-screen conversation.
+	a.requestRedraw()
 	_ = a.logger.Write(msg)
 	a.notifyGotify(msg, self)
 	if a.scripts != nil && (msg.Kind == model.KindMessage || msg.Kind == model.KindAction || msg.Kind == model.KindDCC) {
@@ -239,6 +255,31 @@ func (a *App) onIRCEvent(ev ircclient.Event) {
 		Tags:    ev.Tags,
 		Raw:     true,
 	})
+}
+
+// requestRedraw coalesces background wake-ups without ever blocking an IRC
+// callback. All actual widget mutation/rendering remains on the TUI goroutine.
+func (a *App) requestRedraw() {
+	select {
+	case a.redraw <- struct{}{}:
+	default:
+	}
+}
+
+// refreshTypingIndicator is the only periodic visual maintenance Copperline
+// needs. It repaints just the input widget when a typing state expires instead
+// of rebuilding the entire interface on a timer.
+func (a *App) refreshTypingIndicator() {
+	b := a.state.CurrentInfo()
+	title := "Message"
+	if b != nil {
+		title = typingInputTitle(a.irc.TypingUsers(b.Server, b.Target))
+	}
+	if title == a.input.Title {
+		return
+	}
+	a.input.Title = title
+	ui.Render(a.input)
 }
 
 func (a *App) notifyGotify(msg model.Message, self string) {
@@ -484,7 +525,7 @@ func (a *App) renderCopyMode() {
 // sent after four seconds without an edit, and Manager enforces the spec's
 // three-second minimum interval between notifications for a target.
 func (a *App) syncOutgoingTyping() {
-	b := a.state.Current()
+	b := a.state.CurrentInfo()
 	server, target := "", ""
 	if b != nil && b.Target != "" && b.Target != "*server*" {
 		server, target = b.Server, b.Target
@@ -593,7 +634,7 @@ func (a *App) handleMouse(e ui.Event) {
 			if w > 90 && m.X >= rightStart && m.Y > 0 && m.Y < h-1 {
 				row := m.Y - 1
 				if row >= 0 && row < len(a.userNicks) {
-					if b := a.state.Current(); b != nil {
+					if b := a.state.CurrentInfo(); b != nil {
 						nick := a.userNicks[row]
 						if a.nickDoubleClicked(b.Server, nick) {
 							a.state.Select(b.Server, nick)
@@ -667,7 +708,7 @@ func mousePayload(v any) (ui.Mouse, bool) {
 // cursor. At the start of a message it uses the conventional IRC reply form
 // "Nick: ". Repeated Tab presses cycle through all matching users.
 func (a *App) completeNick() bool {
-	b := a.state.Current()
+	b := a.state.CurrentInfo()
 	if b == nil || !model.IsChannel(b.Target) {
 		a.resetNickCompletion()
 		return false
@@ -806,7 +847,7 @@ func (a *App) handleJumpKey(id string) bool {
 		if err == nil && a.selectBufferNumber(n) {
 			return true
 		}
-		if b := a.state.Current(); b != nil {
+		if b := a.state.CurrentInfo(); b != nil {
 			a.local(b.Server, b.Target, model.KindError, "no buffer numbered "+digits)
 		}
 		return true
@@ -862,7 +903,7 @@ func (a *App) selectRelative(delta int) {
 // their stable creation order. Keyboard buffer navigation must use this same
 // ordering so Ctrl-N/Ctrl-P never appear to jump around randomly.
 func (a *App) sidebarOrder() ([]string, string) {
-	buffers, current := a.state.Snapshot()
+	buffers, current := a.state.SnapshotInfo()
 	servers := a.irc.ServerNames()
 	keys := make([]string, 0, len(buffers))
 
@@ -917,7 +958,7 @@ func (a *App) render() {
 }
 
 func (a *App) rebuildSidebar() {
-	buffers, current := a.state.Snapshot()
+	buffers, current := a.state.SnapshotInfo()
 	servers := a.irc.ServerNames()
 	var rows []string
 	var keys []string
@@ -965,11 +1006,13 @@ func (a *App) rebuildSidebar() {
 }
 
 func (a *App) rebuildCurrent() {
-	b := a.state.Current()
+	b := a.state.CurrentInfo()
 	if b == nil {
 		a.transcript.Rows = []string{"No buffer selected"}
 		a.transcriptKey = ""
 		a.transcriptReset = false
+		a.transcriptStart = 0
+		a.transcriptTotal = 0
 		a.users.Rows = nil
 		a.topic.Text = ""
 		a.input.Title = "Message"
@@ -979,7 +1022,9 @@ func (a *App) rebuildCurrent() {
 
 	key := model.Key(b.Server, b.Target)
 	bufferChanged := key != a.transcriptKey
-	if bufferChanged || a.transcriptReset {
+	resetWidget := bufferChanged || a.transcriptReset
+	preservedSelected := -1
+	if resetWidget {
 		oldSelected := a.transcript.SelectedRow
 		preserveSelection := !bufferChanged && a.transcriptReset && !a.follow
 
@@ -991,26 +1036,71 @@ func (a *App) rebuildCurrent() {
 		a.transcript = a.newTranscriptList()
 		a.transcriptKey = key
 		a.transcriptReset = false
+		a.transcriptStart = 0
+		a.transcriptTotal = 0
 		if bufferChanged {
 			a.follow = true
 		}
 		if preserveSelection {
-			a.transcript.SelectedRow = oldSelected
+			preservedSelected = oldSelected
 		}
 	}
 
+	// Pull only messages that arrived since the rows already cached by the TUI.
+	// Previously every redraw cloned and reformatted the entire scrollback.
+	// With thousands of retained messages that made display latency depend on
+	// how much history a channel happened to have.
+	window := a.state.CurrentWindow(a.transcriptTotal)
+	if window == nil {
+		return
+	}
+
 	a.input.Title = typingInputTitle(a.irc.TypingUsers(b.Server, b.Target))
-	rows := make([]string, 0, len(b.Messages))
-	for _, msg := range b.Messages {
-		rows = append(rows, a.theme.formatMessage(msg, a.cfg.General.Timestamp))
+
+	fullReset := resetWidget ||
+		a.transcriptTotal < window.Start ||
+		a.transcriptTotal > window.Total ||
+		a.transcriptStart > window.Start ||
+		(a.transcriptTotal == 0 && window.Total > 0)
+
+	if window.Total == 0 {
+		a.transcript.Rows = []string{"No messages yet."}
+		a.transcriptStart = 0
+		a.transcriptTotal = 0
+	} else if fullReset {
+		rows := make([]string, 0, len(window.Messages))
+		for _, msg := range window.Messages {
+			rows = append(rows, a.theme.formatMessage(msg, a.cfg.General.Timestamp))
+		}
+		a.transcript.Rows = rows
+		a.transcriptStart = window.Start
+		a.transcriptTotal = window.Total
+	} else {
+		// If MaxLines evicted old messages, discard the matching cached rows.
+		if window.Start > a.transcriptStart {
+			drop := int(window.Start - a.transcriptStart)
+			if drop >= len(a.transcript.Rows) {
+				a.transcript.Rows = nil
+			} else {
+				a.transcript.Rows = a.transcript.Rows[drop:]
+			}
+			if !a.follow {
+				a.transcript.SelectedRow -= drop
+			}
+		}
+		for _, msg := range window.Messages {
+			a.transcript.Rows = append(a.transcript.Rows, a.theme.formatMessage(msg, a.cfg.General.Timestamp))
+		}
+		a.transcriptStart = window.Start
+		a.transcriptTotal = window.Total
 	}
-	if len(rows) == 0 {
-		rows = []string{"No messages yet."}
-	}
-	a.transcript.Rows = rows
+
 	a.transcript.Title = b.Server + " / " + b.Target
-	if a.transcript.SelectedRow >= len(rows) {
-		a.transcript.SelectedRow = len(rows) - 1
+	if preservedSelected >= 0 {
+		a.transcript.SelectedRow = preservedSelected
+	}
+	if a.transcript.SelectedRow >= len(a.transcript.Rows) {
+		a.transcript.SelectedRow = len(a.transcript.Rows) - 1
 	}
 	if a.transcript.SelectedRow < 0 {
 		a.transcript.SelectedRow = 0

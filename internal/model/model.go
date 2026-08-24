@@ -35,6 +35,27 @@ type Buffer struct {
 	Target   string
 	Messages []Message
 	Unread   int
+	Total    uint64
+}
+
+// BufferInfo is a lightweight buffer snapshot for UI/navigation code that
+// does not need message history. Keeping these paths history-free avoids
+// copying every message in every buffer during routine redraws.
+type BufferInfo struct {
+	Server string
+	Target string
+	Unread int
+	Total  uint64
+}
+
+// MessageWindow describes the retained message window for the current buffer.
+// Start is the number of older messages that have fallen out of the in-memory
+// history and Total is the number of messages ever appended to this buffer.
+// Messages contains only the portion requested by CurrentWindow.
+type MessageWindow struct {
+	BufferInfo
+	Start    uint64
+	Messages []Message
 }
 
 type State struct {
@@ -79,8 +100,16 @@ func (s *State) Add(msg Message) {
 	defer s.mu.Unlock()
 	b := s.ensureLocked(msg.Server, msg.Target)
 	b.Messages = append(b.Messages, msg)
+	b.Total++
 	if len(b.Messages) > s.MaxLines {
-		b.Messages = append([]Message(nil), b.Messages[len(b.Messages)-s.MaxLines:]...)
+		drop := len(b.Messages) - s.MaxLines
+		// Drop old messages in-place instead of allocating/copying the entire
+		// retained history for every new line once the buffer is full. Clear
+		// removed entries first so their strings/tags can be reclaimed.
+		for i := 0; i < drop; i++ {
+			b.Messages[i] = Message{}
+		}
+		b.Messages = b.Messages[drop:]
 	}
 	if s.CurrentKey != Key(msg.Server, msg.Target) {
 		b.Unread++
@@ -116,6 +145,54 @@ func (s *State) Current() *Buffer {
 	return cloneBuffer(b)
 }
 
+// CurrentInfo returns the current buffer without copying its message history.
+func (s *State) CurrentInfo() *BufferInfo {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	b := s.Buffers[s.CurrentKey]
+	if b == nil {
+		return nil
+	}
+	return &BufferInfo{Server: b.Server, Target: b.Target, Unread: b.Unread, Total: b.Total}
+}
+
+// SnapshotInfo returns lightweight buffer metadata in stable creation order.
+// Unlike Snapshot, it never clones message slices.
+func (s *State) SnapshotInfo() ([]BufferInfo, string) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]BufferInfo, 0, len(s.Order))
+	for _, key := range s.Order {
+		if b := s.Buffers[key]; b != nil {
+			out = append(out, BufferInfo{Server: b.Server, Target: b.Target, Unread: b.Unread, Total: b.Total})
+		}
+	}
+	return out, s.CurrentKey
+}
+
+// CurrentWindow returns only messages newer than sinceTotal when possible.
+// If sinceTotal is older than the retained history window (or otherwise
+// invalid), Messages contains the entire retained window so callers can reset
+// their cache safely.
+func (s *State) CurrentWindow(sinceTotal uint64) *MessageWindow {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	b := s.Buffers[s.CurrentKey]
+	if b == nil {
+		return nil
+	}
+	start := b.Total - uint64(len(b.Messages))
+	idx := 0
+	if sinceTotal >= start && sinceTotal <= b.Total {
+		idx = int(sinceTotal - start)
+	}
+	msgs := append([]Message(nil), b.Messages[idx:]...)
+	return &MessageWindow{
+		BufferInfo: BufferInfo{Server: b.Server, Target: b.Target, Unread: b.Unread, Total: b.Total},
+		Start:      start,
+		Messages:   msgs,
+	}
+}
 func (s *State) Snapshot() ([]*Buffer, string) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

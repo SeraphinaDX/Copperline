@@ -28,6 +28,7 @@ type Manager struct {
 	typing     map[string]typingEntry
 	typingSent map[string]time.Time
 	eventSink  func(Event)
+	updateSink func()
 }
 
 type Event struct {
@@ -214,6 +215,24 @@ func (m *Manager) emitEvent(event Event) {
 	m.mu.RUnlock()
 	if sink != nil {
 		sink(event)
+	}
+}
+
+// SetUpdateSink installs a lightweight notification that fires after an IRC
+// event has been fully processed. It lets the TUI wake on state changes without
+// polling or racing ahead of Manager's own event handling.
+func (m *Manager) SetUpdateSink(sink func()) {
+	m.mu.Lock()
+	m.updateSink = sink
+	m.mu.Unlock()
+}
+
+func (m *Manager) emitUpdate() {
+	m.mu.RLock()
+	sink := m.updateSink
+	m.mu.RUnlock()
+	if sink != nil {
+		sink()
 	}
 }
 
@@ -773,6 +792,10 @@ func (m *Manager) DCCSend(server, peer, path string) error {
 }
 
 func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
+	// Notify the UI only after this event's state mutations are complete.
+	// Transcript messages can wake it earlier through emitMessage/state.Add.
+	defer m.emitUpdate()
+
 	when := e.Timestamp
 	if when.IsZero() {
 		when = time.Now()
