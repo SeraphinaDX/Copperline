@@ -276,11 +276,13 @@ func (a *App) handleKey(id string) {
 		a.transcript.ScrollPageUp()
 	case "<PageDown>":
 		a.transcript.ScrollPageDown()
+		a.resumeFollowAtBottom()
 	case "<Up>":
 		a.follow = false
 		a.transcript.ScrollUp()
 	case "<Down>":
 		a.transcript.ScrollDown()
+		a.resumeFollowAtBottom()
 	case "<Space>":
 		a.input.InsertRune(' ')
 	default:
@@ -387,6 +389,7 @@ func (a *App) handleMouse(e ui.Event) {
 	case "MouseWheelDown":
 		if m.X >= left {
 			a.transcript.ScrollAmount(3)
+			a.resumeFollowAtBottom()
 		}
 	case "MouseLeft":
 		if m.X < left && m.Y > 0 {
@@ -411,6 +414,21 @@ func (a *App) handleMouse(e ui.Event) {
 				}
 			}
 		}
+	}
+}
+
+// resumeFollowAtBottom restores live-follow once manual downward scrolling
+// reaches the newest logical row. Scrolling upward deliberately disables
+// follow mode, but arriving back at the bottom should make future messages
+// stay visible without requiring End.
+func (a *App) resumeFollowAtBottom() {
+	if len(a.transcript.Rows) == 0 {
+		a.follow = true
+		return
+	}
+	if a.transcript.SelectedRow >= len(a.transcript.Rows)-1 {
+		a.follow = true
+		a.transcript.ScrollBottom()
 	}
 }
 
