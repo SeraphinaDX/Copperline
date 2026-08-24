@@ -10,6 +10,8 @@ mouse = true
 # when you are composing a message.
 show_typing = true
 send_typing = true
+# Set false to hide "nick joined" lines while still tracking channel membership.
+show_join_messages = true
 history_lines = 2000
 reconnect_seconds = 10
 

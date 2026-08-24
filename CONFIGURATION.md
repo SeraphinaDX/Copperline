@@ -134,6 +134,7 @@ Global defaults and client-wide behavior.
 | `mouse` | bool | `false` | Enables gotui mouse handling, including clickable buffers/nicks and mouse-wheel scrollback. |
 | `show_typing` | bool | `true` | Shows incoming IRCv3 `+typing` indicators in the message input title when the server supports `message-tags`. |
 | `send_typing` | bool | `true` | Sends your IRCv3 `+typing` state to compatible clients. Set to `false` if you do not want to reveal when you are composing a message. Slash commands never generate typing notifications. |
+| `show_join_messages` | bool | `true` | Shows `nick joined` lines in channel buffers. Set to `false` to hide JOIN messages while still tracking channel membership normally. |
 | `history_lines` | integer | `1000` | Maximum number of messages retained in each in-memory buffer. Values `<= 0` are reset to `1000`. |
 | `reconnect_seconds` | integer | `10` | Delay between reconnect attempts. Values `<= 0` are reset to `10`. |
 
@@ -148,6 +149,17 @@ send_typing = true
 ```
 
 `show_typing = false` hides other users' indicators. `send_typing = false` is the privacy control that prevents Copperline from advertising when you are composing a message. Copperline never sends typing state while the input is a slash command. Active notifications are throttled and refreshed according to the IRCv3 timing rules; stale incoming indicators expire automatically.
+
+## Join messages
+
+Channel JOIN lines can be hidden without changing Copperline's membership tracking:
+
+```toml
+[general]
+show_join_messages = false
+```
+
+When disabled, Copperline still processes JOIN events internally, updates nick/channel state, and confirms membership in the sidebar; it simply does not add `nick joined` lines to channel buffers. PART, QUIT, KICK, and topic messages are unaffected.
 
 ## Identity inheritance
 

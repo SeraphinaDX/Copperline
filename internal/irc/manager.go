@@ -845,7 +845,7 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		m.emitMessage(model.Message{Time: when, Server: server, Target: target, Nick: source, Text: e.Last(), Kind: model.KindNotice, Tags: tags})
 		return
 	case girc.JOIN:
-		if len(e.Params) > 0 {
+		if len(e.Params) > 0 && m.cfg.General.ShowJoinMessagesEnabled() {
 			m.emitMessage(model.Message{Time: when, Server: server, Target: e.Params[0], Kind: model.KindSystem, Text: source + " joined", Tags: tags})
 		}
 		return
