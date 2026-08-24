@@ -939,16 +939,6 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		return
 	}
 
-	// These numerics are routine channel synchronization data. girc already
-	// consumes them to maintain topic/channel/member state, so rendering them
-	// again in the transcript only creates a block of protocol noise whenever a
-	// channel is joined or refreshed. Keep them available to raw event consumers
-	// (including Lua), but do not add them to chat scrollback. Check this before
-	// Event.Pretty() as well so a library-provided pretty form cannot leak them.
-	if isChannelHousekeepingNumeric(e.Command) {
-		return
-	}
-
 	if pretty, ok := e.Pretty(); ok && pretty != "" {
 		m.emitMessage(model.Message{Time: when, Server: server, Target: "*server*", Kind: model.KindSystem, Text: pretty, Tags: tags})
 		return
@@ -967,21 +957,6 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 			text += " " + strings.Join(e.Params, " ")
 		}
 		m.emitMessage(model.Message{Time: when, Server: server, Target: target, Kind: model.KindSystem, Text: text, Tags: tags})
-	}
-}
-
-func isChannelHousekeepingNumeric(command string) bool {
-	switch command {
-	case "315", // RPL_ENDOFWHO
-		"324", // RPL_CHANNELMODEIS
-		"329", // RPL_CREATIONTIME (widely implemented extension)
-		"332", // RPL_TOPIC
-		"333", // RPL_TOPICWHOTIME
-		"353", // RPL_NAMREPLY
-		"366": // RPL_ENDOFNAMES
-		return true
-	default:
-		return false
 	}
 }
 

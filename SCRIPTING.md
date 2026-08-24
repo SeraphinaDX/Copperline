@@ -283,34 +283,6 @@ or:
 local libera_nick = copperline.nick("libera")
 ```
 
-## Bundled example scripts
-
-The source tree includes a [`scripts/`](scripts/) directory containing small, commented examples that use the real Copperline Lua API:
-
-```text
-scripts/hello.lua
-scripts/wave.lua
-scripts/mentions.lua
-scripts/away.lua
-scripts/connection.lua
-scripts/debug-events.lua
-```
-
-They are **not loaded automatically from the repository directory**. Copy only the examples you want into Copperline's configured script directory, for example:
-
-```sh
-mkdir -p ~/.config/copperline/scripts
-cp scripts/wave.lua ~/.config/copperline/scripts/
-```
-
-Then reload them without restarting Copperline:
-
-```text
-/lua reload
-```
-
-See [`scripts/README.md`](scripts/README.md) for a short description of every example.
-
 ## Complete example
 
 Save this as:
