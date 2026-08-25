@@ -164,7 +164,7 @@ func isLegacyHousekeepingLogLine(line string) bool {
 			continue
 		}
 		switch fields[i+1] {
-		case "315", "324", "329", "332", "333", "353", "366":
+		case "315", "324", "328", "329", "332", "333", "352", "353", "366":
 			return true
 		}
 	}

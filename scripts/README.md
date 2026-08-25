@@ -33,7 +33,7 @@ Use `/lua list` to see which files loaded successfully.
 - `away.lua` — adds `/brb [reason]` and `/back`; demonstrates `copperline.raw`.
 - `connection.lua` — reacts to numeric `001`; demonstrates a raw IRC numeric hook.
 - `debug-events.lua` — demonstrates the catch-all `irc` hook. Debug output is disabled by default because it can be very noisy.
-- `blackjack.lua` - play a game of blackjack.
-- `trout.lua` - slap someone with a large trout...
+- `trout.lua` — adds `/trout nickname`; sends the classic large-trout CTCP ACTION.
+- `blackjack.lua` — hosts per-user blackjack in channels/queries with `!blackjack`, `!hit`, and `!stand`.
 
 For the complete API and event reference, see [`../SCRIPTING.md`](../SCRIPTING.md).

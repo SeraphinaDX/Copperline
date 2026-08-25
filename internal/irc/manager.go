@@ -974,9 +974,11 @@ func isChannelHousekeepingNumeric(command string) bool {
 	switch command {
 	case "315", // RPL_ENDOFWHO
 		"324", // RPL_CHANNELMODEIS
+		"328", // RPL_CHANNEL_URL (widely implemented extension)
 		"329", // RPL_CREATIONTIME (widely implemented extension)
 		"332", // RPL_TOPIC
 		"333", // RPL_TOPICWHOTIME
+		"352", // RPL_WHOREPLY
 		"353", // RPL_NAMREPLY
 		"366": // RPL_ENDOFNAMES
 		return true

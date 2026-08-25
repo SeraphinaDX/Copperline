@@ -25,7 +25,7 @@ copperline.command("trout", function(ctx)
         return
     end
 
-    local action = "slaps " .. nick .. " around a bit with a large trout."
+    local action = "*slaps " .. nick .. " around a bit with a large trout*."
 
     -- CTCP ACTION is what IRC clients send for /me. Copperline's Lua API does
     -- not need a special helper for it; the raw IRC form is straightforward.
