@@ -41,6 +41,23 @@ history_lines = 2000
 log_backlog_lines = 10
 reconnect_seconds = 10
 
+[keybindings]
+next_buffer = "Ctrl+N"
+previous_buffer = "Ctrl+P"
+user_list_down = "Alt+N"
+user_list_up = "Alt+P"
+jump_buffer = "F6"
+jump_cancel = "Escape"
+complete_nick = "Tab"
+transcript_page_up = "PageUp"
+transcript_page_down = "PageDown"
+transcript_line_up = "Up"
+transcript_line_down = "Down"
+copy_mode = "Alt+L"
+follow_bottom = "End"
+clear_input = "Ctrl+U"
+quit = "Ctrl+C"
+
 [theme]
 background = "#090d16"
 panel = "#101827"
@@ -249,6 +266,59 @@ Set `log_backlog_lines = 0` to disable the persistent backlog and use only the n
 `log_dir` is ignored while logging is disabled. Per-server and per-channel logging overrides are not currently supported.
 
 ---
+
+# `[keybindings]`
+
+Copperline's main navigation and action keys can be changed without rebuilding the client. The whole section is optional; every omitted setting uses its built-in default.
+
+```toml
+[keybindings]
+next_buffer = "Ctrl+N"
+previous_buffer = "Ctrl+P"
+user_list_down = "Alt+N"
+user_list_up = "Alt+P"
+jump_buffer = "F6"
+jump_cancel = "Escape"
+complete_nick = "Tab"
+transcript_page_up = "PageUp"
+transcript_page_down = "PageDown"
+transcript_line_up = "Up"
+transcript_line_down = "Down"
+copy_mode = "Alt+L"
+follow_bottom = "End"
+clear_input = "Ctrl+U"
+quit = "Ctrl+C"
+```
+
+| Setting | Default | Action |
+|---|---|---|
+| `next_buffer` | `Ctrl+N` | Select the next buffer. |
+| `previous_buffer` | `Ctrl+P` | Select the previous buffer. |
+| `user_list_down` | `Alt+N` | Scroll the right-hand nick list down one name. |
+| `user_list_up` | `Alt+P` | Scroll the right-hand nick list up one name. |
+| `jump_buffer` | `F6` | Enter numbered buffer-jump mode. |
+| `jump_cancel` | `Escape` | Cancel numbered buffer-jump mode. |
+| `complete_nick` | `Tab` | Complete/cycle nicknames. |
+| `transcript_page_up` | `PageUp` | Scroll the transcript up one page. |
+| `transcript_page_down` | `PageDown` | Scroll the transcript down one page. |
+| `transcript_line_up` | `Up` | Scroll the transcript up one line. |
+| `transcript_line_down` | `Down` | Scroll the transcript down one line. |
+| `copy_mode` | `Alt+L` | Toggle bare/copy mode. |
+| `follow_bottom` | `End` | Return to/follow the newest transcript line. |
+| `clear_input` | `Ctrl+U` | Clear the input field. |
+| `quit` | `Ctrl+C` | Quit Copperline. |
+
+Readable key names are accepted: `Ctrl+<letter>`, `Alt+<letter>` (or `Meta+<letter>`), `F1` through `F64`, `PageUp`, `PageDown`, `Up`, `Down`, `End`, `Tab`, and `Escape`. gotui-style event IDs such as `<M-n>` and `<C-p>` are also accepted. `Ctrl+` and `Alt+` bindings currently take a single character.
+
+Copperline validates this section when it starts. Unsupported names produce a configuration error, and two actions cannot use the same key. Core input-editing keys (`Enter`, `Backspace`/`Ctrl+H`, `Left`, `Right`, `Home`, `Space`, and unmodified printable characters) are reserved and cannot be assigned to actions. `End` remains available as an action because it is Copperline's default `follow_bottom` key.
+
+Example: use Vim-like Alt keys for the nick list while leaving buffer navigation alone:
+
+```toml
+[keybindings]
+user_list_down = "Alt+J"
+user_list_up = "Alt+K"
+```
 
 # `[scripting]`
 
@@ -811,7 +881,6 @@ enabled = false
 
 The following are not currently configurable in TOML:
 
-- keybindings
 - per-channel logging enable/disable
 - per-channel log directories
 - log rotation

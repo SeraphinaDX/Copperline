@@ -5,18 +5,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/BurntSushi/toml"
 )
 
 type Config struct {
-	General   GeneralConfig   `toml:"general"`
-	Theme     ThemeConfig     `toml:"theme"`
-	DCC       DCCConfig       `toml:"dcc"`
-	Gotify    GotifyConfig    `toml:"gotify"`
-	Scripting ScriptingConfig `toml:"scripting"`
-	Servers   []ServerConfig  `toml:"server"`
+	General     GeneralConfig     `toml:"general"`
+	Keybindings KeybindingsConfig `toml:"keybindings"`
+	Theme       ThemeConfig       `toml:"theme"`
+	DCC         DCCConfig         `toml:"dcc"`
+	Gotify      GotifyConfig      `toml:"gotify"`
+	Scripting   ScriptingConfig   `toml:"scripting"`
+	Servers     []ServerConfig    `toml:"server"`
 }
 
 type GeneralConfig struct {
@@ -33,6 +35,182 @@ type GeneralConfig struct {
 	HistoryLines     int    `toml:"history_lines"`
 	LogBacklogLines  *int   `toml:"log_backlog_lines"`
 	ReconnectSecs    int    `toml:"reconnect_seconds"`
+}
+
+// KeybindingsConfig controls the main navigation/action shortcuts. Core text
+// editing keys are reserved so rebinding navigation cannot make the input field
+// unusable.
+type KeybindingsConfig struct {
+	NextBuffer         string `toml:"next_buffer"`
+	PreviousBuffer     string `toml:"previous_buffer"`
+	UserListDown       string `toml:"user_list_down"`
+	UserListUp         string `toml:"user_list_up"`
+	JumpBuffer         string `toml:"jump_buffer"`
+	JumpCancel         string `toml:"jump_cancel"`
+	CompleteNick       string `toml:"complete_nick"`
+	TranscriptPageUp   string `toml:"transcript_page_up"`
+	TranscriptPageDown string `toml:"transcript_page_down"`
+	TranscriptLineUp   string `toml:"transcript_line_up"`
+	TranscriptLineDown string `toml:"transcript_line_down"`
+	CopyMode           string `toml:"copy_mode"`
+	FollowBottom       string `toml:"follow_bottom"`
+	ClearInput         string `toml:"clear_input"`
+	Quit               string `toml:"quit"`
+}
+
+func (k *KeybindingsConfig) applyDefaults() {
+	set := func(dst *string, value string) {
+		if strings.TrimSpace(*dst) == "" {
+			*dst = value
+		}
+	}
+	set(&k.NextBuffer, "Ctrl+N")
+	set(&k.PreviousBuffer, "Ctrl+P")
+	set(&k.UserListDown, "Alt+N")
+	set(&k.UserListUp, "Alt+P")
+	set(&k.JumpBuffer, "F6")
+	set(&k.JumpCancel, "Escape")
+	set(&k.CompleteNick, "Tab")
+	set(&k.TranscriptPageUp, "PageUp")
+	set(&k.TranscriptPageDown, "PageDown")
+	set(&k.TranscriptLineUp, "Up")
+	set(&k.TranscriptLineDown, "Down")
+	set(&k.CopyMode, "Alt+L")
+	set(&k.FollowBottom, "End")
+	set(&k.ClearInput, "Ctrl+U")
+	set(&k.Quit, "Ctrl+C")
+}
+
+func (k KeybindingsConfig) namedBindings() []struct {
+	name  string
+	value string
+} {
+	return []struct {
+		name  string
+		value string
+	}{
+		{"next_buffer", k.NextBuffer},
+		{"previous_buffer", k.PreviousBuffer},
+		{"user_list_down", k.UserListDown},
+		{"user_list_up", k.UserListUp},
+		{"jump_buffer", k.JumpBuffer},
+		{"jump_cancel", k.JumpCancel},
+		{"complete_nick", k.CompleteNick},
+		{"transcript_page_up", k.TranscriptPageUp},
+		{"transcript_page_down", k.TranscriptPageDown},
+		{"transcript_line_up", k.TranscriptLineUp},
+		{"transcript_line_down", k.TranscriptLineDown},
+		{"copy_mode", k.CopyMode},
+		{"follow_bottom", k.FollowBottom},
+		{"clear_input", k.ClearInput},
+		{"quit", k.Quit},
+	}
+}
+
+// CanonicalKeyBinding converts user-friendly config names and gotui event IDs
+// to the same representation. Examples: Alt+N => <M-n>, Ctrl+P => <C-p>.
+func CanonicalKeyBinding(value string) (string, error) {
+	v := strings.TrimSpace(value)
+	if v == "" {
+		return "", errors.New("empty keybinding")
+	}
+
+	// Accept gotui/tcell-style event IDs directly.
+	if strings.HasPrefix(v, "<") && strings.HasSuffix(v, ">") {
+		inner := strings.TrimSpace(v[1 : len(v)-1])
+		lower := strings.ToLower(inner)
+		switch {
+		case strings.HasPrefix(lower, "m-"):
+			return canonicalModified("M", inner[2:])
+		case strings.HasPrefix(lower, "a-"):
+			return canonicalModified("M", inner[2:])
+		case strings.HasPrefix(lower, "alt-"):
+			return canonicalModified("M", inner[4:])
+		case strings.HasPrefix(lower, "c-"):
+			return canonicalModified("C", inner[2:])
+		default:
+			return canonicalNamed(inner)
+		}
+	}
+
+	parts := strings.SplitN(v, "+", 2)
+	if len(parts) == 2 {
+		mod := strings.ToLower(strings.TrimSpace(parts[0]))
+		key := strings.TrimSpace(parts[1])
+		switch mod {
+		case "ctrl", "control":
+			return canonicalModified("C", key)
+		case "alt", "meta":
+			return canonicalModified("M", key)
+		default:
+			return "", fmt.Errorf("unsupported modifier %q", parts[0])
+		}
+	}
+
+	if len([]rune(v)) == 1 {
+		return v, nil
+	}
+	return canonicalNamed(v)
+}
+
+func canonicalModified(mod, key string) (string, error) {
+	runes := []rune(strings.TrimSpace(key))
+	if len(runes) != 1 {
+		return "", fmt.Errorf("%s modifier requires a single key, got %q", mod, key)
+	}
+	r := runes[0]
+	if r >= 'A' && r <= 'Z' {
+		r += 'a' - 'A'
+	}
+	return fmt.Sprintf("<%s-%c>", mod, r), nil
+}
+
+func canonicalNamed(key string) (string, error) {
+	k := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(key), " ", ""))
+	switch k {
+	case "escape", "esc":
+		return "<Escape>", nil
+	case "enter", "return":
+		return "<Enter>", nil
+	case "tab":
+		return "<Tab>", nil
+	case "pageup", "pgup":
+		return "<PageUp>", nil
+	case "pagedown", "pgdown", "pgdn":
+		return "<PageDown>", nil
+	case "up":
+		return "<Up>", nil
+	case "down":
+		return "<Down>", nil
+	case "left":
+		return "<Left>", nil
+	case "right":
+		return "<Right>", nil
+	case "home":
+		return "<Home>", nil
+	case "end":
+		return "<End>", nil
+	case "backspace":
+		return "<Backspace>", nil
+	case "space":
+		return "<Space>", nil
+	}
+	if len(k) >= 2 && k[0] == 'f' {
+		if fn, err := strconv.Atoi(k[1:]); err == nil && fn >= 1 && fn <= 64 {
+			return fmt.Sprintf("<F%d>", fn), nil
+		}
+	}
+	return "", fmt.Errorf("unsupported key %q", key)
+}
+
+// KeyBindingMatches compares a configured binding with a gotui event ID.
+func KeyBindingMatches(binding, eventID string) bool {
+	want, err := CanonicalKeyBinding(binding)
+	if err != nil {
+		return false
+	}
+	got, err := CanonicalKeyBinding(eventID)
+	return err == nil && want == got
 }
 
 func (g GeneralConfig) LoggingEnabled() bool {
@@ -205,6 +383,7 @@ func (c *Config) applyDefaults() {
 	if c.General.LogDir == "" {
 		c.General.LogDir = "~/.local/state/copperline/logs"
 	}
+	c.Keybindings.applyDefaults()
 	c.Theme.applyDefaults()
 	if c.DCC.DownloadDir == "" {
 		c.DCC.DownloadDir = "~/Downloads"
@@ -283,7 +462,34 @@ func (t *ThemeConfig) applyDefaults() {
 	}
 }
 
+func isReservedInputKey(canonical string) bool {
+	if len([]rune(canonical)) == 1 {
+		return true
+	}
+	switch canonical {
+	case "<Enter>", "<Backspace>", "<C-h>", "<Left>", "<Right>", "<Home>", "<Space>":
+		return true
+	default:
+		return false
+	}
+}
+
 func (c *Config) Validate() error {
+	seenBindings := make(map[string]string)
+	for _, binding := range c.Keybindings.namedBindings() {
+		canonical, err := CanonicalKeyBinding(binding.value)
+		if err != nil {
+			return fmt.Errorf("[keybindings].%s: %w", binding.name, err)
+		}
+		if isReservedInputKey(canonical) {
+			return fmt.Errorf("[keybindings].%s uses reserved input key %s", binding.name, binding.value)
+		}
+		if other, exists := seenBindings[canonical]; exists {
+			return fmt.Errorf("[keybindings].%s conflicts with %s (%s)", binding.name, other, binding.value)
+		}
+		seenBindings[canonical] = binding.name
+	}
+
 	if c.Gotify.Enabled {
 		if strings.TrimSpace(c.Gotify.URL) == "" {
 			return errors.New("gotify is enabled but [gotify].url is empty")

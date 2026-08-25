@@ -16,6 +16,7 @@ import (
 	"copperline/internal/model"
 	"copperline/internal/scripting"
 
+	"github.com/gdamore/tcell/v3"
 	ui "github.com/metaspartan/gotui/v5"
 	"github.com/metaspartan/gotui/v5/widgets"
 )
@@ -49,6 +50,7 @@ type App struct {
 
 	sidebarKeys           []string
 	userNicks             []string
+	userScroll            int
 	follow                bool
 	transcriptKey         string
 	transcriptReset       bool
@@ -157,7 +159,7 @@ func (a *App) makeWidgets() {
 
 	a.topic = widgets.NewParagraph()
 	a.topic.Title = "Topic"
-	a.topic.WrapText = false
+	a.topic.WrapText = true
 	a.topic.BorderRounded = true
 	a.theme.applyParagraph(a.topic, a.theme.topic)
 
@@ -411,11 +413,11 @@ func (a *App) handleUIEvent(e ui.Event) {
 	// handled until the normal interface is restored.
 	if a.copyMode {
 		if e.Type == ui.KeyboardEvent {
-			if isCopyModeKey(e.ID) {
+			if config.KeyBindingMatches(a.cfg.Keybindings.CopyMode, e.ID) {
 				a.setCopyMode(false)
 				return
 			}
-			if e.ID == "<C-c>" {
+			if config.KeyBindingMatches(a.cfg.Keybindings.Quit, e.ID) {
 				a.stopped.Store(true)
 			}
 			return
@@ -445,11 +447,87 @@ func (a *App) handleUIEvent(e ui.Event) {
 		a.syncOutgoingTyping()
 		return
 	case ui.KeyboardEvent:
-		a.handleKey(e.ID)
+		if delta := userListScrollEventDelta(e, a.cfg.Keybindings); delta != 0 {
+			a.resetNickCompletion()
+			a.scrollUsers(delta)
+			a.syncOutgoingTyping()
+			return
+		}
+		a.handleKey(e)
 	}
 }
 
-func (a *App) handleKey(id string) {
+// keyBindingMatchesEvent normally matches gotui's event ID. Modern terminal
+// keyboard protocols can also report Ctrl+letter as a KeyRune carrying a Ctrl
+// modifier. gotui v5.0.3 preserves Alt on KeyRune IDs but not Ctrl, so inspect
+// the raw tcell event as a fallback instead of losing configurable Ctrl keys.
+func keyBindingMatchesEvent(binding string, e ui.Event) bool {
+	if config.KeyBindingMatches(binding, e.ID) {
+		return true
+	}
+
+	keyEvent, ok := e.Payload.(*tcell.EventKey)
+	if !ok || keyEvent == nil || keyEvent.Key() != tcell.KeyRune {
+		return false
+	}
+
+	ctrl := keyEvent.Modifiers()&tcell.ModCtrl != 0
+	alt := keyEvent.Modifiers()&tcell.ModAlt != 0
+	return keyBindingMatchesRuneFallback(binding, keyEvent.Str(), ctrl, alt)
+}
+
+func keyBindingMatchesRuneFallback(binding, text string, ctrl, alt bool) bool {
+	fallback := canonicalRuneKeyEvent(text, ctrl, alt)
+	return fallback != "" && config.KeyBindingMatches(binding, fallback)
+}
+
+func canonicalRuneKeyEvent(text string, ctrl, alt bool) string {
+	runes := []rune(text)
+	if len(runes) != 1 {
+		return ""
+	}
+	r := runes[0]
+
+	// Some legacy reports put the ASCII control byte in Str() instead of the
+	// printable letter. Turn Ctrl+A..Ctrl+Z back into a..z for matching.
+	if ctrl && r >= 1 && r <= 26 {
+		r = 'a' + r - 1
+	}
+
+	switch {
+	case ctrl:
+		return fmt.Sprintf("<C-%c>", r)
+	case alt:
+		return fmt.Sprintf("<M-%c>", r)
+	default:
+		return string(r)
+	}
+}
+
+func userListScrollEventDelta(e ui.Event, keys config.KeybindingsConfig) int {
+	switch {
+	case keyBindingMatchesEvent(keys.UserListDown, e):
+		return 1
+	case keyBindingMatchesEvent(keys.UserListUp, e):
+		return -1
+	default:
+		return 0
+	}
+}
+
+func userListScrollKeyDelta(id string, keys config.KeybindingsConfig) int {
+	switch {
+	case config.KeyBindingMatches(keys.UserListDown, id):
+		return 1
+	case config.KeyBindingMatches(keys.UserListUp, id):
+		return -1
+	default:
+		return 0
+	}
+}
+
+func (a *App) handleKey(e ui.Event) {
+	id := e.ID
 	beforeText := a.input.Text
 	defer func() {
 		if a.input.Text != beforeText {
@@ -458,21 +536,69 @@ func (a *App) handleKey(id string) {
 		a.syncOutgoingTyping()
 	}()
 
-	if id != "<Tab>" {
+	keys := a.cfg.Keybindings
+	matches := func(binding string) bool { return keyBindingMatchesEvent(binding, e) }
+	if !matches(keys.CompleteNick) {
 		a.resetNickCompletion()
 	}
 
 	if a.jumpMode {
-		if a.handleJumpKey(id) {
+		if a.handleJumpKey(e) {
 			return
 		}
 	}
 
-	switch id {
-	case "<M-l>", "<M-L>", "<A-l>", "<A-L>", "<Alt-l>", "<Alt-L>":
+	// Configurable navigation/action keys are checked before the fixed input
+	// editing keys. Configuration validation reserves the essential editing keys
+	// so navigation cannot make the input field unusable.
+	switch {
+	case matches(keys.CopyMode):
 		a.setCopyMode(true)
-	case "<C-c>":
+		return
+	case matches(keys.Quit):
 		a.stopped.Store(true)
+		return
+	case matches(keys.ClearInput):
+		a.input.Text = ""
+		a.input.Cursor = 0
+		return
+	case matches(keys.NextBuffer):
+		a.selectRelative(1)
+		return
+	case matches(keys.PreviousBuffer):
+		a.selectRelative(-1)
+		return
+	case matches(keys.JumpBuffer):
+		a.jumpMode = true
+		a.jumpDigits = ""
+		return
+	case matches(keys.CompleteNick):
+		a.completeNick()
+		return
+	case matches(keys.TranscriptPageUp):
+		a.follow = false
+		a.transcript.ScrollPageUp()
+		return
+	case matches(keys.TranscriptPageDown):
+		a.transcript.ScrollPageDown()
+		a.resumeFollowAtBottom()
+		return
+	case matches(keys.TranscriptLineUp):
+		a.follow = false
+		a.transcript.ScrollUp()
+		return
+	case matches(keys.TranscriptLineDown):
+		a.transcript.ScrollDown()
+		a.resumeFollowAtBottom()
+		return
+	case matches(keys.FollowBottom):
+		a.input.Cursor = len([]rune(a.input.Text))
+		a.follow = true
+		a.scrollTranscriptBottom()
+		return
+	}
+
+	switch id {
 	case "<Enter>":
 		line := strings.TrimSpace(a.input.Text)
 		a.input.Text = ""
@@ -489,33 +615,8 @@ func (a *App) handleKey(id string) {
 	case "<Home>":
 		a.input.Cursor = 0
 	case "<End>":
+		// If follow_bottom is rebound, End retains its normal input-editing role.
 		a.input.Cursor = len([]rune(a.input.Text))
-		a.follow = true
-		a.scrollTranscriptBottom()
-	case "<C-u>":
-		a.input.Text = ""
-		a.input.Cursor = 0
-	case "<C-n>":
-		a.selectRelative(1)
-	case "<F6>":
-		a.jumpMode = true
-		a.jumpDigits = ""
-	case "<Tab>":
-		a.completeNick()
-	case "<C-p>":
-		a.selectRelative(-1)
-	case "<PageUp>":
-		a.follow = false
-		a.transcript.ScrollPageUp()
-	case "<PageDown>":
-		a.transcript.ScrollPageDown()
-		a.resumeFollowAtBottom()
-	case "<Up>":
-		a.follow = false
-		a.transcript.ScrollUp()
-	case "<Down>":
-		a.transcript.ScrollDown()
-		a.resumeFollowAtBottom()
 	case "<Space>":
 		a.input.InsertRune(' ')
 	default:
@@ -524,17 +625,6 @@ func (a *App) handleKey(id string) {
 				a.input.InsertRune(r)
 			}
 		}
-	}
-}
-
-// isCopyModeKey accepts the Meta/Alt spellings used by gotui/tcell and a few
-// terminal backends. gotui normally reports Alt+L as <M-l>.
-func isCopyModeKey(id string) bool {
-	switch id {
-	case "<M-l>", "<M-L>", "<A-l>", "<A-L>", "<Alt-l>", "<Alt-L>":
-		return true
-	default:
-		return false
 	}
 }
 
@@ -685,11 +775,19 @@ func (a *App) handleMouse(e ui.Event) {
 
 	switch e.ID {
 	case "<MouseWheelUp>":
+		if a.mouseOverUsers(m.X, m.Y) {
+			a.scrollUsers(-3)
+			return
+		}
 		if m.X >= left {
 			a.follow = false
 			a.transcript.ScrollAmount(-3)
 		}
 	case "<MouseWheelDown>":
+		if a.mouseOverUsers(m.X, m.Y) {
+			a.scrollUsers(3)
+			return
+		}
 		if m.X >= left {
 			a.transcript.ScrollAmount(3)
 			a.resumeFollowAtBottom()
@@ -705,25 +803,126 @@ func (a *App) handleMouse(e ui.Event) {
 			}
 			return
 		}
-		if len(a.userNicks) > 0 {
-			_, h := ui.TerminalDimensions()
-			rightStart := w - 22
-			if w > 90 && m.X >= rightStart && m.Y > 0 && m.Y < h-1 {
-				row := m.Y - 1
-				if row >= 0 && row < len(a.userNicks) {
-					if b := a.state.CurrentInfo(); b != nil {
-						nick := a.userNicks[row]
-						if a.nickDoubleClicked(b.Server, nick) {
-							a.state.Select(b.Server, nick)
-							a.follow = true
-						}
-						return
+		if len(a.userNicks) > 0 && a.mouseOverUserRows(m.X, m.Y) {
+			// The Users widget has a one-cell border, so row zero starts at Y=1.
+			visibleRow := m.Y - 1
+			if nick, ok := a.userNickAtVisibleRow(visibleRow); ok {
+				if b := a.state.CurrentInfo(); b != nil {
+					if a.nickDoubleClicked(b.Server, nick) {
+						a.state.Select(b.Server, nick)
+						a.follow = true
 					}
+					return
 				}
 			}
 		}
 		a.clearNickClick()
 	}
+}
+
+const (
+	userPaneWidth = 22
+	uiBottomRows  = 4
+)
+
+// userListVisibleRows is the number of nickname rows inside the Users border.
+func userListVisibleRows(height int) int {
+	rows := height - uiBottomRows - 2
+	if rows < 0 {
+		return 0
+	}
+	return rows
+}
+
+func userListVisibleRowsForCurrentTerminal() int {
+	_, h := ui.TerminalDimensions()
+	return userListVisibleRows(h)
+}
+
+func clampUserScroll(scroll, total, visible int) int {
+	if visible <= 0 || total <= visible {
+		return 0
+	}
+	maxScroll := total - visible
+	if scroll < 0 {
+		return 0
+	}
+	if scroll > maxScroll {
+		return maxScroll
+	}
+	return scroll
+}
+
+func (a *App) scrollUsers(amount int) {
+	w, h := ui.TerminalDimensions()
+	if w <= 90 || amount == 0 {
+		return
+	}
+	visible := userListVisibleRows(h)
+	a.userScroll = clampUserScroll(a.userScroll+amount, len(a.userNicks), visible)
+	a.refreshUserRows(visible)
+}
+
+func (a *App) refreshUserRows(visible int) {
+	a.userScroll = clampUserScroll(a.userScroll, len(a.userNicks), visible)
+	if visible <= 0 || len(a.userNicks) == 0 {
+		a.users.Rows = nil
+		a.users.Title = "Users"
+		return
+	}
+
+	end := a.userScroll + visible
+	if end > len(a.userNicks) {
+		end = len(a.userNicks)
+	}
+	a.users.Rows = make([]string, 0, end-a.userScroll)
+	b := a.state.CurrentInfo()
+	for _, nick := range a.userNicks[a.userScroll:end] {
+		displayNick := nick
+		if b != nil {
+			displayNick = a.irc.NickPrefix(b.Server, b.Target, nick) + nick
+		}
+		a.users.Rows = append(a.users.Rows, styled(displayNick, a.theme.nickColor(nick)))
+	}
+
+	title := "Users"
+	if a.userScroll > 0 {
+		title += " ↑"
+	}
+	if end < len(a.userNicks) {
+		title += " ↓"
+	}
+	a.users.Title = title
+	// Rows is already the visible window, so keep gotui's own private scroll
+	// offset pinned to the first row.
+	a.users.SelectedRow = 0
+}
+
+func (a *App) mouseOverUsers(x, y int) bool {
+	w, h := ui.TerminalDimensions()
+	if w <= 90 {
+		return false
+	}
+	return x >= w-userPaneWidth && x < w && y >= 0 && y < h-uiBottomRows
+}
+
+func (a *App) mouseOverUserRows(x, y int) bool {
+	w, h := ui.TerminalDimensions()
+	if w <= 90 {
+		return false
+	}
+	return x > w-userPaneWidth && x < w-1 && y > 0 && y < h-uiBottomRows-1
+}
+
+func (a *App) userNickAtVisibleRow(row int) (string, bool) {
+	if row < 0 || a.users == nil || row >= len(a.users.Rows) {
+		return "", false
+	}
+	index := a.userScroll + row
+	if index < 0 || index >= len(a.userNicks) {
+		return "", false
+	}
+	return a.userNicks[index], true
 }
 
 const nickDoubleClickWindow = 500 * time.Millisecond
@@ -912,15 +1111,19 @@ func isCompletionSeparator(r rune) bool {
 	return r == ' ' || r == '\t' || r == '\n' || r == '\r'
 }
 
-// handleJumpKey handles numbered buffer jumping after F6.
-// Digits are collected until Enter. Escape cancels. Any unrelated key cancels
-// jump mode and is then handled normally, preserving the existing bindings.
-func (a *App) handleJumpKey(id string) bool {
-	switch id {
-	case "<F6>", "<Escape>":
+// handleJumpKey handles numbered buffer jumping after the configured jump key.
+// Digits are collected until Enter. The configured cancel key aborts. Any
+// unrelated key cancels jump mode and is then handled normally.
+func (a *App) handleJumpKey(e ui.Event) bool {
+	id := e.ID
+	if keyBindingMatchesEvent(a.cfg.Keybindings.JumpBuffer, e) ||
+		keyBindingMatchesEvent(a.cfg.Keybindings.JumpCancel, e) {
 		a.jumpMode = false
 		a.jumpDigits = ""
 		return true
+	}
+
+	switch id {
 	case "<Backspace>", "<C-h>":
 		if len(a.jumpDigits) > 0 {
 			a.jumpDigits = a.jumpDigits[:len(a.jumpDigits)-1]
@@ -991,7 +1194,7 @@ func (a *App) selectRelative(delta int) {
 // sidebarOrder returns buffer keys in the exact order presented in the sidebar:
 // each server buffer first, followed by that server's channels and queries in
 // their stable creation order. Keyboard buffer navigation must use this same
-// ordering so Ctrl-N/Ctrl-P never appear to jump around randomly.
+// ordering so next/previous-buffer bindings never appear to jump randomly.
 func (a *App) sidebarOrder() ([]string, string) {
 	buffers, current := a.state.SnapshotInfo()
 	servers := a.irc.ServerNames()
@@ -1026,22 +1229,24 @@ func (a *App) render() {
 	}
 	right := 0
 	if w > 90 {
-		right = 22
+		right = userPaneWidth
 	}
-	bottom := 4
+	bottom := uiBottomRows
 
 	a.rebuildSidebar()
 	a.rebuildCurrent()
 
 	a.sidebar.SetRect(0, 0, left, h-1)
-	a.topic.SetRect(left, 0, w-right, 3)
-	a.transcript.SetRect(left, 3, w-right, h-bottom)
+	topicHeight := topicWidgetHeight(a.topic.Text, w-right-left)
+	a.topic.SetRect(left, 0, w-right, topicHeight)
+	a.transcript.SetRect(left, topicHeight, w-right, h-bottom)
 	a.input.SetRect(left, h-bottom, w, h-1)
 	a.status.SetRect(0, h-1, w, h)
 
 	items := []ui.Drawable{a.sidebar, a.topic, a.transcript, a.input, a.status}
 	if right > 0 {
 		a.users.SetRect(w-right, 0, w, h-bottom)
+		a.refreshUserRows(userListVisibleRows(h))
 		items = append(items, a.users)
 	}
 	ui.Render(items...)
@@ -1136,6 +1341,8 @@ func (a *App) rebuildCurrent() {
 		a.transcriptFromLog = false
 		a.transcriptBacklogRows = 0
 		a.users.Rows = nil
+		a.userNicks = nil
+		a.userScroll = 0
 		a.topic.Text = ""
 		a.input.Title = "Message"
 		a.status.Text = "Copperline"
@@ -1147,6 +1354,9 @@ func (a *App) rebuildCurrent() {
 	resetWidget := bufferChanged || a.transcriptReset
 	preservedSelected := -1
 	if resetWidget {
+		if bufferChanged {
+			a.userScroll = 0
+		}
 		oldRows := append([]string(nil), a.transcript.Rows...)
 		oldSelected := a.transcript.SelectedRow
 		oldStart := a.transcriptStart
@@ -1326,11 +1536,7 @@ func (a *App) rebuildCurrent() {
 	a.topic.Text = topic
 
 	a.userNicks = a.irc.Names(b.Server, b.Target)
-	a.users.Rows = make([]string, 0, len(a.userNicks))
-	for _, nick := range a.userNicks {
-		displayNick := a.irc.NickPrefix(b.Server, b.Target, nick) + nick
-		a.users.Rows = append(a.users.Rows, styled(displayNick, a.theme.nickColor(nick)))
-	}
+	a.userScroll = clampUserScroll(a.userScroll, len(a.userNicks), userListVisibleRowsForCurrentTerminal())
 
 	nick := a.irc.CurrentNick(b.Server)
 	caps := len(a.irc.Capabilities(b.Server))
@@ -1350,10 +1556,15 @@ func (a *App) rebuildCurrent() {
 		} else {
 			digits += "_"
 		}
-		a.status.Text = fmt.Sprintf(" Jump to buffer: %s  Enter select  Esc cancel ", digits)
+		a.status.Text = fmt.Sprintf(" Jump to buffer: %s  Enter select  %s cancel ", digits, a.cfg.Keybindings.JumpCancel)
 		return
 	}
-	a.status.Text = fmt.Sprintf(" %s  %s%s  nick:%s  IRCv3:%d caps  DCC:%d  Ctrl-N/P buffers  F6 jump  PgUp/PgDn scroll  /help ", b.Server, b.Target, joinState, nick, caps, offers)
+	a.status.Text = fmt.Sprintf(" %s  %s%s  nick:%s  IRCv3:%d caps  DCC:%d  %s/%s buffers  %s/%s users  %s jump  %s/%s scroll  /help ",
+		b.Server, b.Target, joinState, nick, caps, offers,
+		a.cfg.Keybindings.NextBuffer, a.cfg.Keybindings.PreviousBuffer,
+		a.cfg.Keybindings.UserListDown, a.cfg.Keybindings.UserListUp,
+		a.cfg.Keybindings.JumpBuffer,
+		a.cfg.Keybindings.TranscriptPageUp, a.cfg.Keybindings.TranscriptPageDown)
 }
 
 // loadChannelLogBacklog initializes a newly selected channel from the last few

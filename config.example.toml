@@ -18,6 +18,26 @@ history_lines = 2000
 log_backlog_lines = 10
 reconnect_seconds = 10
 
+# Optional keyboard bindings. These defaults match Copperline's built-in keys.
+# Supported forms include Ctrl+letter, Alt+letter, F1-F64, PageUp/PageDown,
+# Up/Down, Home/End, Tab, Escape, and gotui-style IDs such as <M-n>.
+[keybindings]
+next_buffer = "Ctrl+N"
+previous_buffer = "Ctrl+P"
+user_list_down = "Alt+N"
+user_list_up = "Alt+P"
+jump_buffer = "F6"
+jump_cancel = "Escape"
+complete_nick = "Tab"
+transcript_page_up = "PageUp"
+transcript_page_down = "PageDown"
+transcript_line_up = "Up"
+transcript_line_down = "Down"
+copy_mode = "Alt+L"
+follow_bottom = "End"
+clear_input = "Ctrl+U"
+quit = "Ctrl+C"
+
 # Optional UI theme. Copperline uses these values by default if [theme] is omitted.
 # Colors may be #RRGGBB true-color values or gotui names such as
 # red, green, yellow, blue, cyan, magenta, white, grey, orange, purple,
