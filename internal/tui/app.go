@@ -40,7 +40,7 @@ type App struct {
 	redraw  chan struct{}
 
 	sidebar    *widgets.List
-	transcript *widgets.List
+	transcript *transcriptList
 	users      *widgets.List
 	topic      *widgets.Paragraph
 	input      *widgets.Input
@@ -163,14 +163,14 @@ func (a *App) makeWidgets() {
 	a.theme.applyStatus(a.status)
 }
 
-func (a *App) newTranscriptList() *widgets.List {
+func (a *App) newTranscriptList() *transcriptList {
 	list := widgets.NewList()
 	list.Title = "Messages"
 	list.WrapText = true
 	list.BorderRounded = true
 	a.theme.applyBlock(list)
 	list.SelectedStyle = list.TextStyle
-	return list
+	return &transcriptList{List: list}
 }
 
 func (a *App) Run() error {
@@ -519,7 +519,7 @@ func (a *App) renderCopyMode() {
 	// widget so the normal transcript's scroll position and private topRow state
 	// are untouched.
 	a.rebuildCurrent()
-	bare := widgets.NewList()
+	bare := &transcriptList{List: widgets.NewList()}
 	bare.Border = false
 	bare.WrapText = true
 	bare.Rows = append([]string(nil), a.transcript.Rows...)

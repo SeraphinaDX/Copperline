@@ -7,7 +7,7 @@ import (
 )
 
 func TestScrollTranscriptBottomEmptyListIsSafe(t *testing.T) {
-	list := widgets.NewList()
+	list := &transcriptList{List: widgets.NewList()}
 	app := &App{transcript: list}
 
 	app.scrollTranscriptBottom()
@@ -18,7 +18,7 @@ func TestScrollTranscriptBottomEmptyListIsSafe(t *testing.T) {
 }
 
 func TestScrollTranscriptBottomSelectsLastRow(t *testing.T) {
-	list := widgets.NewList()
+	list := &transcriptList{List: widgets.NewList()}
 	list.Rows = []string{"one", "two", "three"}
 	app := &App{transcript: list}
 
@@ -30,7 +30,7 @@ func TestScrollTranscriptBottomSelectsLastRow(t *testing.T) {
 }
 
 func TestTranscriptCachePreservesBacklogAndLiveRows(t *testing.T) {
-	list := widgets.NewList()
+	list := &transcriptList{List: widgets.NewList()}
 	list.Rows = []string{
 		"[old persisted line](fg:#77839a)",
 		"live message one",
