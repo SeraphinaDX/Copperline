@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -77,6 +78,10 @@ type App struct {
 	lastNickClickAt     time.Time
 
 	copyMode bool
+
+	connectionMu     sync.Mutex
+	connectionSeen   map[string]bool
+	reconnectPending map[string]bool
 }
 
 func New(cfg *config.Config) *App {
@@ -89,6 +94,8 @@ func New(cfg *config.Config) *App {
 		follow:           true,
 		redraw:           make(chan struct{}, 1),
 		transcriptCaches: make(map[string]transcriptCache),
+		connectionSeen:   make(map[string]bool),
+		reconnectPending: make(map[string]bool),
 	}
 	for _, s := range cfg.Servers {
 		a.state.Ensure(s.Name, "*server*")
@@ -120,8 +127,11 @@ func New(cfg *config.Config) *App {
 			},
 			CurrentNick: a.irc.CurrentNick,
 		})
-		a.irc.SetEventSink(a.onIRCEvent)
 	}
+	// Raw IRC events drive small pieces of user-facing connection feedback as
+	// well as optional Lua hooks, so keep the event sink installed even when
+	// scripting is disabled.
+	a.irc.SetEventSink(a.onIRCEvent)
 	// Wake the UI after Manager has fully applied IRC state changes. Transcript
 	// messages also wake immediately from onMessage after state.Add.
 	a.irc.SetUpdateSink(a.requestRedraw)
@@ -256,18 +266,72 @@ func (a *App) onMessage(msg model.Message) {
 }
 
 func (a *App) onIRCEvent(ev ircclient.Event) {
-	if a.scripts == nil {
+	a.handleConnectionFeedback(ev)
+
+	if a.scripts != nil {
+		a.scripts.EmitEvent(scripting.Event{
+			Time:    ev.Time,
+			Server:  ev.Server,
+			Command: ev.Command,
+			Source:  ev.Source,
+			Params:  ev.Params,
+			Tags:    ev.Tags,
+			Raw:     true,
+		})
+	}
+}
+
+// handleConnectionFeedback surfaces automatic reconnects where the user is
+// actually looking. The server buffer already keeps the detailed connection
+// record; this adds one concise line to the currently selected buffer on the
+// affected network. DISCONNECTED and CLOSED can both be emitted for one loss,
+// so reconnectPending also acts as the de-duplication guard.
+func (a *App) handleConnectionFeedback(ev ircclient.Event) {
+	switch ev.Command {
+	case ircclient.EventDisconnected, ircclient.EventClosed:
+		// A deliberate /disconnect must not be described as an automatic
+		// reconnect. It also cancels any pending reconnect notice.
+		if !a.irc.WantsConnection(ev.Server) {
+			a.connectionMu.Lock()
+			a.reconnectPending[ev.Server] = false
+			a.connectionMu.Unlock()
+			return
+		}
+
+		a.connectionMu.Lock()
+		seen := a.connectionSeen[ev.Server]
+		pending := a.reconnectPending[ev.Server]
+		if seen && !pending {
+			a.reconnectPending[ev.Server] = true
+		}
+		a.connectionMu.Unlock()
+		if seen && !pending {
+			a.connectionLine(ev.Server, "Connection lost; reconnecting…")
+		}
+
+	case ircclient.EventConnected:
+		a.connectionMu.Lock()
+		wasReconnect := a.reconnectPending[ev.Server]
+		a.connectionSeen[ev.Server] = true
+		a.reconnectPending[ev.Server] = false
+		a.connectionMu.Unlock()
+		if wasReconnect {
+			nick := a.irc.CurrentNick(ev.Server)
+			if nick == "" {
+				a.connectionLine(ev.Server, "Reconnected to "+ev.Server+".")
+			} else {
+				a.connectionLine(ev.Server, "Reconnected to "+ev.Server+" as "+nick+".")
+			}
+		}
+	}
+}
+
+func (a *App) connectionLine(server, text string) {
+	current := a.state.CurrentInfo()
+	if current == nil || !strings.EqualFold(current.Server, server) {
 		return
 	}
-	a.scripts.EmitEvent(scripting.Event{
-		Time:    ev.Time,
-		Server:  ev.Server,
-		Command: ev.Command,
-		Source:  ev.Source,
-		Params:  ev.Params,
-		Tags:    ev.Tags,
-		Raw:     true,
-	})
+	a.local(server, current.Target, model.KindSystem, text)
 }
 
 // requestRedraw coalesces background wake-ups without ever blocking an IRC

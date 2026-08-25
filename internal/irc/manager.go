@@ -40,6 +40,14 @@ type Event struct {
 	Tags    map[string]string
 }
 
+// Client lifecycle event names exposed to consumers without requiring the TUI
+// to import girc directly.
+const (
+	EventConnected    = girc.CONNECTED
+	EventDisconnected = girc.DISCONNECTED
+	EventClosed       = girc.CLOSED
+)
+
 type typingEntry struct {
 	Server  string
 	Target  string
@@ -742,6 +750,19 @@ func (m *Manager) CurrentNick(server string) string {
 	return c.GetNick()
 }
 
+// WantsConnection reports whether the user has asked Copperline to keep this
+// server connected. It lets the UI distinguish an automatic reconnect from a
+// deliberate /disconnect without exposing Session internals.
+func (m *Manager) WantsConnection(server string) bool {
+	s, err := m.session(server)
+	if err != nil {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.desired
+}
+
 func (m *Manager) Capabilities(server string) []string {
 	c, err := m.client(server)
 	if err != nil {
@@ -928,7 +949,29 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		return
 	case girc.NICK:
 		m.clearTypingNick(server, source)
-		m.serverLine(server, model.KindSystem, source+" is now known as "+e.Last())
+		newNick := e.Last()
+		if newNick == "" {
+			return
+		}
+
+		// Depending on handler ordering, girc may already have updated its own
+		// nick by the time this callback runs. Checking both sides makes self
+		// nick changes reliable either way.
+		currentNick := c.GetNick()
+		isSelf := strings.EqualFold(source, currentNick) || strings.EqualFold(newNick, currentNick)
+		text := source + " is now known as " + newNick
+		if isSelf {
+			text = "You are now known as " + newNick
+		}
+
+		// Keep the server-status record, and also show the change in every
+		// shared channel. This is the traditional IRC-client behavior and makes
+		// nick changes visible where the conversation is actually happening.
+		m.emitMessage(model.Message{Time: when, Server: server, Target: "*server*", Kind: model.KindSystem, Text: text, Tags: tags})
+		channels := nickChangeChannels(c, source, newNick, isSelf)
+		for _, channel := range channels {
+			m.emitMessage(model.Message{Time: when, Server: server, Target: channel, Kind: model.KindSystem, Text: text, Tags: tags})
+		}
 		return
 	case girc.QUIT:
 		m.clearTypingNick(server, source)
@@ -968,6 +1011,51 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		}
 		m.emitMessage(model.Message{Time: when, Server: server, Target: target, Kind: model.KindSystem, Text: text, Tags: tags})
 	}
+}
+
+func nickChangeChannels(c *girc.Client, oldNick, newNick string, self bool) []string {
+	seen := make(map[string]bool)
+	var channels []string
+	add := func(channel string) {
+		if channel == "" {
+			return
+		}
+		key := strings.ToLower(channel)
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		channels = append(channels, channel)
+	}
+
+	if self {
+		for _, channel := range c.ChannelList() {
+			add(channel)
+		}
+	} else {
+		// girc's state tracker may have renamed the user before our ALL_EVENTS
+		// handler runs, so try the new nickname first and the old one second.
+		for _, nick := range []string{newNick, oldNick} {
+			if user := c.LookupUser(nick); user != nil {
+				for _, channel := range user.ChannelList {
+					add(channel)
+				}
+			}
+		}
+
+		// Defensive fallback for networks/libraries whose state notification
+		// ordering differs: inspect the tracked channel membership directly.
+		if len(channels) == 0 {
+			for _, channel := range c.Channels() {
+				if channel.UserIn(newNick) || channel.UserIn(oldNick) {
+					add(channel.Name)
+				}
+			}
+		}
+	}
+
+	sort.Strings(channels)
+	return channels
 }
 
 func isChannelHousekeepingNumeric(command string) bool {
