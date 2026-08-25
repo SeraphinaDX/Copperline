@@ -2,6 +2,7 @@ package tui
 
 import (
 	"image"
+	"strings"
 
 	ui "github.com/metaspartan/gotui/v5"
 	"github.com/metaspartan/gotui/v5/widgets"
@@ -26,6 +27,50 @@ type transcriptList struct {
 type transcriptPhysicalLine struct {
 	logicalRow int
 	cells      []ui.Cell
+}
+
+func parseTranscriptStyles(row string, defaultStyle ui.Style) []ui.Cell {
+	cells := make([]ui.Cell, 0, len(row))
+
+	appendText := func(text string, style ui.Style) {
+		if text == "" {
+			return
+		}
+		cells = append(cells, ui.RunesToStyledCells([]rune(text), style)...)
+	}
+
+	for len(row) > 0 {
+		start := strings.Index(row, transcriptStyleStart)
+		if start < 0 {
+			appendText(row, defaultStyle)
+			break
+		}
+
+		appendText(row[:start], defaultStyle)
+
+		rest := row[start+len(transcriptStyleStart):]
+		colorEnd := strings.IndexByte(rest, 0)
+		if colorEnd < 0 {
+			// A malformed internal marker must never eat visible text.
+			appendText(row[start:], defaultStyle)
+			break
+		}
+
+		color := rest[:colorEnd]
+		styledText := rest[colorEnd+1:]
+		end := strings.Index(styledText, transcriptStyleEnd)
+		if end < 0 {
+			appendText(row[start:], defaultStyle)
+			break
+		}
+
+		style := defaultStyle
+		style.Fg = colorSpec(color, defaultStyle.Fg)
+		appendText(styledText[:end], style)
+		row = styledText[end+len(transcriptStyleEnd):]
+	}
+
+	return cells
 }
 
 func (t *transcriptList) Draw(buf *ui.Buffer) {
@@ -113,7 +158,7 @@ func (t *transcriptList) visiblePhysicalLines() ([]transcriptPhysicalLine, bool,
 }
 
 func (t *transcriptList) wrapLogicalRow(row, width int) [][]ui.Cell {
-	cells := ui.ParseStyles(t.Rows[row], t.TextStyle)
+	cells := parseTranscriptStyles(t.Rows[row], t.TextStyle)
 
 	// Preserve List's selected-row styling semantics. Copperline normally sets
 	// SelectedStyle == TextStyle for transcripts, but keeping this behavior here

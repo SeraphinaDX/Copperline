@@ -108,6 +108,24 @@ func styled(text, color string) string {
 	return fmt.Sprintf("[%s](fg:%s)", text, color)
 }
 
+// Transcript rows use a private style envelope instead of gotui's
+// [text](fg:color) markup. IRC nicknames and messages are user-controlled and
+// may legitimately contain '[' or ']'. Feeding those characters into gotui's
+// style parser lets a bracket in one chunk pair with markup in a later chunk,
+// corrupting the visible line. NUL cannot occur in a valid IRC protocol line,
+// so it is a safe internal delimiter that never collides with IRC text.
+const (
+	transcriptStyleStart = "\x00CLFG:"
+	transcriptStyleEnd   = "\x00CLEND\x00"
+)
+
+func transcriptStyled(text, color string) string {
+	if text == "" {
+		return ""
+	}
+	return transcriptStyleStart + color + "\x00" + text + transcriptStyleEnd
+}
+
 func (t uiTheme) nickColor(nick string) string {
 	if len(t.cfg.NickColors) == 0 {
 		return t.cfg.Foreground
@@ -120,31 +138,31 @@ func (t uiTheme) nickColor(nick string) string {
 // formatLogBacklog renders persisted context in the existing muted theme
 // color so it is visually distinct from live IRC traffic.
 func (t uiTheme) formatLogBacklog(line string) string {
-	return styled(line, t.cfg.Muted)
+	return transcriptStyled(line, t.cfg.Muted)
 }
 
 func (t uiTheme) formatMessage(m model.Message, layout string) string {
-	stamp := styled(m.Time.Local().Format(layout), t.cfg.Timestamp)
+	stamp := transcriptStyled(m.Time.Local().Format(layout), t.cfg.Timestamp)
 	if m.Mention && (m.Kind == model.KindMessage || m.Kind == model.KindAction) {
-		marker := styled("!", t.cfg.Mention)
+		marker := transcriptStyled("!", t.cfg.Mention)
 		if m.Kind == model.KindAction {
-			return fmt.Sprintf("%s %s %s %s", stamp, marker, styled("* "+m.Nick, t.cfg.Mention), styled(m.Text, t.cfg.Mention))
+			return fmt.Sprintf("%s %s %s %s", stamp, marker, transcriptStyled("* "+m.Nick, t.cfg.Mention), transcriptStyled(m.Text, t.cfg.Mention))
 		}
-		return fmt.Sprintf("%s %s %s %s", stamp, marker, styled("<"+m.Nick+">", t.cfg.Mention), styled(m.Text, t.cfg.Mention))
+		return fmt.Sprintf("%s %s %s %s", stamp, marker, transcriptStyled("<"+m.Nick+">", t.cfg.Mention), transcriptStyled(m.Text, t.cfg.Mention))
 	}
 	switch m.Kind {
 	case model.KindAction:
-		return fmt.Sprintf("%s %s %s", stamp, styled("* "+m.Nick, t.cfg.Action), m.Text)
+		return fmt.Sprintf("%s %s %s", stamp, transcriptStyled("* "+m.Nick, t.cfg.Action), m.Text)
 	case model.KindNotice:
-		return fmt.Sprintf("%s %s %s", stamp, styled("-"+m.Nick+"-", t.cfg.Notice), m.Text)
+		return fmt.Sprintf("%s %s %s", stamp, transcriptStyled("-"+m.Nick+"-", t.cfg.Notice), m.Text)
 	case model.KindSystem:
-		return fmt.Sprintf("%s %s %s", stamp, styled("***", t.cfg.System), m.Text)
+		return fmt.Sprintf("%s %s %s", stamp, transcriptStyled("***", t.cfg.System), m.Text)
 	case model.KindError:
-		return fmt.Sprintf("%s %s %s", stamp, styled("!!!", t.cfg.Error), m.Text)
+		return fmt.Sprintf("%s %s %s", stamp, transcriptStyled("!!!", t.cfg.Error), m.Text)
 	case model.KindDCC:
-		return fmt.Sprintf("%s %s %s", stamp, styled("DCC", t.cfg.DCC), m.Text)
+		return fmt.Sprintf("%s %s %s", stamp, transcriptStyled("DCC", t.cfg.DCC), m.Text)
 	default:
-		nick := styled("<"+m.Nick+">", t.nickColor(m.Nick))
+		nick := transcriptStyled("<"+m.Nick+">", t.nickColor(m.Nick))
 		return fmt.Sprintf("%s %s %s", stamp, nick, m.Text)
 	}
 }

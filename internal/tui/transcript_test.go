@@ -1,8 +1,14 @@
 package tui
 
 import (
+	"strings"
 	"testing"
+	"time"
 
+	"copperline/internal/config"
+	"copperline/internal/model"
+
+	ui "github.com/metaspartan/gotui/v5"
 	"github.com/metaspartan/gotui/v5/widgets"
 )
 
@@ -55,5 +61,50 @@ func TestTranscriptScrollBottomNeverLagsOneLogicalRow(t *testing.T) {
 		if got := lines[len(lines)-1].logicalRow; got != len(list.Rows)-1 {
 			t.Fatalf("iteration %d: last visible logical row = %d, want %d", i, got, len(list.Rows)-1)
 		}
+	}
+}
+
+func TestTranscriptMentionWithBracketNickDoesNotCorruptMarkup(t *testing.T) {
+	theme := uiTheme{cfg: config.ThemeConfig{
+		Timestamp: "#77839a",
+		Mention:   "#ff6f91",
+	}}
+	msg := model.Message{
+		Time:    time.Unix(0, 0),
+		Nick:    "[",
+		Text:    "britney: https://en.wikipedia.org/wiki/Legal_fiction",
+		Kind:    model.KindMessage,
+		Mention: true,
+	}
+
+	row := theme.formatMessage(msg, "X")
+	got := ui.CellsToString(parseTranscriptStyles(row, ui.NewStyle(ui.ColorWhite)))
+	want := "X ! <[> britney: https://en.wikipedia.org/wiki/Legal_fiction"
+	if got != want {
+		t.Fatalf("rendered mention = %q, want %q", got, want)
+	}
+	if strings.Contains(got, "](fg:") || strings.Contains(got, "(fg:") {
+		t.Fatalf("renderer leaked style markup into visible text: %q", got)
+	}
+}
+
+func TestTranscriptDoesNotInterpretIRCTextAsGotuiMarkup(t *testing.T) {
+	theme := uiTheme{cfg: config.ThemeConfig{
+		Timestamp:  "#77839a",
+		Foreground: "#ffffff",
+		NickColors: []string{"#64d8cb"},
+	}}
+	msg := model.Message{
+		Time: time.Unix(0, 0),
+		Nick: "someone",
+		Text: "literal [not markup](fg:#ff0000) stays literal",
+		Kind: model.KindMessage,
+	}
+
+	row := theme.formatMessage(msg, "X")
+	got := ui.CellsToString(parseTranscriptStyles(row, ui.NewStyle(ui.ColorWhite)))
+	want := "X <someone> literal [not markup](fg:#ff0000) stays literal"
+	if got != want {
+		t.Fatalf("rendered message = %q, want %q", got, want)
 	}
 }
