@@ -13,6 +13,8 @@ send_typing = true
 # Set false to hide "nick joined" lines while still tracking channel membership.
 show_join_messages = true
 history_lines = 2000
+# Input/command history kept per buffer for the current session. Set 0 to disable.
+input_history_limit = 10
 # Show this many persisted log lines in muted grey when a channel is opened.
 # Set to 0 to disable the disk-backed channel backlog.
 log_backlog_lines = 10
@@ -29,10 +31,12 @@ user_list_up = "Alt+P"
 jump_buffer = "F6"
 jump_cancel = "Escape"
 complete_nick = "Tab"
+history_previous = "Up"
+history_next = "Down"
 transcript_page_up = "PageUp"
 transcript_page_down = "PageDown"
-transcript_line_up = "Up"
-transcript_line_down = "Down"
+transcript_line_up = "Alt+K"
+transcript_line_down = "Alt+J"
 copy_mode = "Alt+L"
 follow_bottom = "End"
 clear_input = "Ctrl+U"

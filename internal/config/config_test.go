@@ -69,3 +69,54 @@ func TestValidateRejectsReservedInputKey(t *testing.T) {
 		t.Fatal("Validate accepted reserved Enter key for an action")
 	}
 }
+
+func TestHistoryDefaultsTakeUpAndDownAndMoveTranscriptLines(t *testing.T) {
+	cfg := Config{}
+	cfg.applyDefaults()
+	if cfg.Keybindings.HistoryPrevious != "Up" || cfg.Keybindings.HistoryNext != "Down" {
+		t.Fatalf("history defaults = %q/%q, want Up/Down", cfg.Keybindings.HistoryPrevious, cfg.Keybindings.HistoryNext)
+	}
+	if cfg.Keybindings.TranscriptLineUp != "Alt+K" || cfg.Keybindings.TranscriptLineDown != "Alt+J" {
+		t.Fatalf("transcript line defaults = %q/%q, want Alt+K/Alt+J", cfg.Keybindings.TranscriptLineUp, cfg.Keybindings.TranscriptLineDown)
+	}
+}
+
+func TestOldExplicitTranscriptArrowDefaultsAreMigrated(t *testing.T) {
+	cfg := Config{Keybindings: KeybindingsConfig{TranscriptLineUp: "Up", TranscriptLineDown: "Down"}}
+	cfg.applyDefaults()
+	if cfg.Keybindings.HistoryPrevious != "Up" || cfg.Keybindings.HistoryNext != "Down" {
+		t.Fatalf("history defaults = %q/%q, want Up/Down", cfg.Keybindings.HistoryPrevious, cfg.Keybindings.HistoryNext)
+	}
+	if cfg.Keybindings.TranscriptLineUp != "Alt+K" || cfg.Keybindings.TranscriptLineDown != "Alt+J" {
+		t.Fatalf("old transcript arrows were not migrated: %q/%q", cfg.Keybindings.TranscriptLineUp, cfg.Keybindings.TranscriptLineDown)
+	}
+}
+
+func TestInputHistoryLimitDefaultsToTen(t *testing.T) {
+	cfg := Config{}
+	cfg.applyDefaults()
+	if got := cfg.General.InputHistoryLimitValue(); got != 10 {
+		t.Fatalf("input history limit = %d, want 10", got)
+	}
+}
+
+func TestInputHistoryLimitAllowsZeroAndRejectsNegative(t *testing.T) {
+	zero := 0
+	cfg := Config{
+		General: GeneralConfig{InputHistoryLimit: &zero},
+		Servers: []ServerConfig{{Name: "test", Host: "irc.example.test"}},
+	}
+	cfg.applyDefaults()
+	if got := cfg.General.InputHistoryLimitValue(); got != 0 {
+		t.Fatalf("input history limit = %d, want 0", got)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate rejected zero input history limit: %v", err)
+	}
+
+	negative := -1
+	cfg.General.InputHistoryLimit = &negative
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate accepted negative input history limit")
+	}
+}

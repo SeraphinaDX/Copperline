@@ -237,8 +237,9 @@ Keyboard controls (all of these action bindings are configurable under `[keybind
 - `F6`, number, `Enter`: jump directly to a numbered buffer
 - `Escape`: cancel an active buffer jump
 - `Tab`: complete a nickname at the cursor; repeated Tab cycles matches
+- `Up` / `Down`: recall older/newer input history for the current buffer (messages and slash commands)
 - `PageUp` / `PageDown`: scroll transcript by page
-- `Up` / `Down`: scroll transcript by line
+- `Alt-K` / `Alt-J`: scroll transcript up/down by one line
 - `Alt-L`: toggle bare/copy mode for easy terminal text selection
 - `End`: return to following the newest messages
 - `Ctrl-U`: clear input
@@ -248,11 +249,15 @@ For example, to move nick-list scrolling from `Alt-N` / `Alt-P` to other keys:
 
 ```toml
 [keybindings]
-user_list_down = "Alt+J"
-user_list_up = "Alt+K"
+user_list_down = "Alt+N"
+user_list_up = "Alt+P"
+history_previous = "Up"
+history_next = "Down"
 ```
 
 Bindings use readable names such as `Ctrl+N`, `Alt+P`, `F6`, `PageUp`, `Escape`, and `Tab`. Existing configs do not need a `[keybindings]` section; omitted values keep the defaults. Copperline rejects invalid or conflicting action bindings at startup so a typo cannot silently disable a shortcut. Configured Ctrl/Alt bindings are matched from both gotui event IDs and the underlying tcell modifier data for compatibility with modern terminal keyboard protocols.
+
+Input history is kept in memory for the current Copperline session and is separate for each buffer. The default limit is 10 entries per buffer and can be changed with `input_history_limit` in `[general]` (`0` disables it). It records both ordinary messages and slash commands. When you press `Up` while a draft is in the input box, Copperline saves that draft; pressing `Down` past the newest recalled item restores it. Consecutive duplicate entries are stored only once. Older configs that explicitly used the old `Up`/`Down` transcript-line defaults are migrated automatically to `Alt+K`/`Alt+J`.
 
 Nickname completion is channel-aware. For example, typing `ali` at the start of the input and pressing `Tab` can produce `Alice: `. If more than one nickname matches, press `Tab` repeatedly to cycle through them. When the partial nick appears later in a message, Copperline completes only the nick and does not add the reply colon.
 

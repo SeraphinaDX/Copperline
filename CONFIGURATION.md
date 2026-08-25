@@ -38,6 +38,7 @@ mouse = true
 show_typing = true
 send_typing = true
 history_lines = 2000
+input_history_limit = 10
 log_backlog_lines = 10
 reconnect_seconds = 10
 
@@ -49,10 +50,12 @@ user_list_up = "Alt+P"
 jump_buffer = "F6"
 jump_cancel = "Escape"
 complete_nick = "Tab"
+history_previous = "Up"
+history_next = "Down"
 transcript_page_up = "PageUp"
 transcript_page_down = "PageDown"
-transcript_line_up = "Up"
-transcript_line_down = "Down"
+transcript_line_up = "Alt+K"
+transcript_line_down = "Alt+J"
 copy_mode = "Alt+L"
 follow_bottom = "End"
 clear_input = "Ctrl+U"
@@ -158,6 +161,7 @@ Global defaults and client-wide behavior.
 | `send_typing` | bool | `true` | Sends your IRCv3 `+typing` state to compatible clients. Set to `false` if you do not want to reveal when you are composing a message. Slash commands never generate typing notifications. |
 | `show_join_messages` | bool | `true` | Shows `nick joined` lines in channel buffers. Set to `false` to hide JOIN messages while still tracking channel membership normally. |
 | `history_lines` | integer | `1000` | Maximum number of live messages retained in each in-memory buffer. Values `<= 0` are reset to `1000`. |
+| `input_history_limit` | integer | `10` | Maximum number of messages/commands remembered per buffer for Up/Down input history during the current session. `0` disables input history. Negative values are rejected. |
 | `log_backlog_lines` | integer | `10` | On the first visit to a channel buffer during a session, display this many lines from the end of its plaintext log in the muted theme color before live messages. Revisiting the buffer preserves its live transcript and does not reload the preview. Set to `0` to disable. |
 | `reconnect_seconds` | integer | `10` | Delay between reconnect attempts. Values `<= 0` are reset to `10`. |
 
@@ -280,10 +284,12 @@ user_list_up = "Alt+P"
 jump_buffer = "F6"
 jump_cancel = "Escape"
 complete_nick = "Tab"
+history_previous = "Up"
+history_next = "Down"
 transcript_page_up = "PageUp"
 transcript_page_down = "PageDown"
-transcript_line_up = "Up"
-transcript_line_down = "Down"
+transcript_line_up = "Alt+K"
+transcript_line_down = "Alt+J"
 copy_mode = "Alt+L"
 follow_bottom = "End"
 clear_input = "Ctrl+U"
@@ -299,10 +305,12 @@ quit = "Ctrl+C"
 | `jump_buffer` | `F6` | Enter numbered buffer-jump mode. |
 | `jump_cancel` | `Escape` | Cancel numbered buffer-jump mode. |
 | `complete_nick` | `Tab` | Complete/cycle nicknames. |
+| `history_previous` | `Up` | Recall the previous input-history item for the current buffer. |
+| `history_next` | `Down` | Recall the next input-history item, or restore the saved draft. |
 | `transcript_page_up` | `PageUp` | Scroll the transcript up one page. |
 | `transcript_page_down` | `PageDown` | Scroll the transcript down one page. |
-| `transcript_line_up` | `Up` | Scroll the transcript up one line. |
-| `transcript_line_down` | `Down` | Scroll the transcript down one line. |
+| `transcript_line_up` | `Alt+K` | Scroll the transcript up one line. |
+| `transcript_line_down` | `Alt+J` | Scroll the transcript down one line. |
 | `copy_mode` | `Alt+L` | Toggle bare/copy mode. |
 | `follow_bottom` | `End` | Return to/follow the newest transcript line. |
 | `clear_input` | `Ctrl+U` | Clear the input field. |
@@ -311,6 +319,8 @@ quit = "Ctrl+C"
 Readable key names are accepted: `Ctrl+<letter>`, `Alt+<letter>` (or `Meta+<letter>`), `F1` through `F64`, `PageUp`, `PageDown`, `Up`, `Down`, `End`, `Tab`, and `Escape`. gotui-style event IDs such as `<M-n>` and `<C-p>` are also accepted. `Ctrl+` and `Alt+` bindings currently take a single character.
 
 Copperline validates this section when it starts. Unsupported names produce a configuration error, and two actions cannot use the same key. Core input-editing keys (`Enter`, `Backspace`/`Ctrl+H`, `Left`, `Right`, `Home`, `Space`, and unmodified printable characters) are reserved and cannot be assigned to actions. `End` remains available as an action because it is Copperline's default `follow_bottom` key.
+
+Input history is session-only and per-buffer. By default Copperline keeps 10 entries per buffer; change `[general].input_history_limit` to choose another limit, or set it to `0` to disable input history. Both messages and slash commands are recorded, consecutive duplicates are collapsed, and a draft present before the first `history_previous` action is restored when `history_next` moves past the newest entry. To make Up/Down available for history, the default single-line transcript bindings are now `Alt+K`/`Alt+J`. Older configs containing the previous explicit `Up`/`Down` transcript defaults are migrated automatically.
 
 Example: use Vim-like Alt keys for the nick list while leaving buffer navigation alone:
 

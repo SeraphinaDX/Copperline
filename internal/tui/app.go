@@ -30,6 +30,13 @@ type transcriptCache struct {
 	backlogRows int
 }
 
+type inputHistoryState struct {
+	entries []string
+	index   int
+	draft   string
+	active  bool
+}
+
 type App struct {
 	cfg     *config.Config
 	state   *model.State
@@ -59,6 +66,7 @@ type App struct {
 	transcriptFromLog     bool
 	transcriptBacklogRows int
 	transcriptCaches      map[string]transcriptCache
+	inputHistory          map[string]*inputHistoryState
 
 	nickCompletionMatches []string
 	nickCompletionIndex   int
@@ -96,6 +104,7 @@ func New(cfg *config.Config) *App {
 		follow:           true,
 		redraw:           make(chan struct{}, 1),
 		transcriptCaches: make(map[string]transcriptCache),
+		inputHistory:     make(map[string]*inputHistoryState),
 		connectionSeen:   make(map[string]bool),
 		reconnectPending: make(map[string]bool),
 	}
@@ -529,9 +538,13 @@ func userListScrollKeyDelta(id string, keys config.KeybindingsConfig) int {
 func (a *App) handleKey(e ui.Event) {
 	id := e.ID
 	beforeText := a.input.Text
+	historyNavigation := false
 	defer func() {
 		if a.input.Text != beforeText {
 			a.typingLastEdit = time.Now()
+			if !historyNavigation {
+				a.resetInputHistoryNavigation()
+			}
 		}
 		a.syncOutgoingTyping()
 	}()
@@ -575,6 +588,14 @@ func (a *App) handleKey(e ui.Event) {
 	case matches(keys.CompleteNick):
 		a.completeNick()
 		return
+	case matches(keys.HistoryPrevious):
+		historyNavigation = true
+		a.inputHistoryPrevious()
+		return
+	case matches(keys.HistoryNext):
+		historyNavigation = true
+		a.inputHistoryNext()
+		return
 	case matches(keys.TranscriptPageUp):
 		a.follow = false
 		a.transcript.ScrollPageUp()
@@ -601,6 +622,9 @@ func (a *App) handleKey(e ui.Event) {
 	switch id {
 	case "<Enter>":
 		line := strings.TrimSpace(a.input.Text)
+		if line != "" {
+			a.addInputHistory(line)
+		}
 		a.input.Text = ""
 		a.input.Cursor = 0
 		if line != "" {
@@ -625,6 +649,106 @@ func (a *App) handleKey(e ui.Event) {
 				a.input.InsertRune(r)
 			}
 		}
+	}
+}
+
+// inputHistoryCurrent returns the session history for the active buffer. Input
+// history is deliberately per-buffer so recalling an old private message in a
+// public channel cannot happen by accident.
+func (a *App) inputHistoryCurrent() *inputHistoryState {
+	b := a.state.CurrentInfo()
+	if b == nil {
+		return nil
+	}
+	key := model.Key(b.Server, b.Target)
+	if a.inputHistory == nil {
+		a.inputHistory = make(map[string]*inputHistoryState)
+	}
+	h := a.inputHistory[key]
+	if h == nil {
+		h = &inputHistoryState{}
+		a.inputHistory[key] = h
+	}
+	return h
+}
+
+func (a *App) inputHistoryLimit() int {
+	if a.cfg == nil {
+		return 10
+	}
+	return a.cfg.General.InputHistoryLimitValue()
+}
+
+func (a *App) addInputHistory(line string) {
+	h := a.inputHistoryCurrent()
+	limit := a.inputHistoryLimit()
+	if h == nil || line == "" || limit == 0 {
+		return
+	}
+	if len(h.entries) == 0 || h.entries[len(h.entries)-1] != line {
+		h.entries = append(h.entries, line)
+		if len(h.entries) > limit {
+			drop := len(h.entries) - limit
+			h.entries = append([]string(nil), h.entries[drop:]...)
+		}
+	}
+	h.index = len(h.entries)
+	h.draft = ""
+	h.active = false
+}
+
+func (a *App) inputHistoryPrevious() {
+	h := a.inputHistoryCurrent()
+	if h == nil || len(h.entries) == 0 {
+		return
+	}
+	if !h.active {
+		h.draft = a.input.Text
+		h.index = len(h.entries)
+		h.active = true
+	}
+	if h.index > 0 {
+		h.index--
+	}
+	a.setInputText(h.entries[h.index])
+}
+
+func (a *App) inputHistoryNext() {
+	h := a.inputHistoryCurrent()
+	if h == nil || !h.active {
+		return
+	}
+	if h.index < len(h.entries)-1 {
+		h.index++
+		a.setInputText(h.entries[h.index])
+		return
+	}
+
+	// Moving past the newest history entry returns to exactly what the user was
+	// typing before they first pressed History Previous.
+	draft := h.draft
+	h.index = len(h.entries)
+	h.draft = ""
+	h.active = false
+	a.setInputText(draft)
+}
+
+func (a *App) setInputText(text string) {
+	a.input.Text = text
+	a.input.Cursor = len([]rune(text))
+	a.resetNickCompletion()
+}
+
+// Any real edit leaves history-navigation mode. The entries remain available;
+// only the temporary cursor/draft state is reset.
+func (a *App) resetInputHistoryNavigation() {
+	for _, h := range a.inputHistory {
+		if h == nil {
+			continue
+		}
+		h.index = len(h.entries)
+		h.draft = ""
+		h.active = false
 	}
 }
 
@@ -1559,10 +1683,11 @@ func (a *App) rebuildCurrent() {
 		a.status.Text = fmt.Sprintf(" Jump to buffer: %s  Enter select  %s cancel ", digits, a.cfg.Keybindings.JumpCancel)
 		return
 	}
-	a.status.Text = fmt.Sprintf(" %s  %s%s  nick:%s  IRCv3:%d caps  DCC:%d  %s/%s buffers  %s/%s users  %s jump  %s/%s scroll  /help ",
+	a.status.Text = fmt.Sprintf(" %s  %s%s  nick:%s  IRCv3:%d caps  DCC:%d  %s/%s buffers  %s/%s users  %s/%s history  %s jump  %s/%s scroll  /help ",
 		b.Server, b.Target, joinState, nick, caps, offers,
 		a.cfg.Keybindings.NextBuffer, a.cfg.Keybindings.PreviousBuffer,
 		a.cfg.Keybindings.UserListDown, a.cfg.Keybindings.UserListUp,
+		a.cfg.Keybindings.HistoryPrevious, a.cfg.Keybindings.HistoryNext,
 		a.cfg.Keybindings.JumpBuffer,
 		a.cfg.Keybindings.TranscriptPageUp, a.cfg.Keybindings.TranscriptPageDown)
 }

@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"fmt"
 	"testing"
 
 	"copperline/internal/config"
+	"copperline/internal/model"
 
 	"github.com/metaspartan/gotui/v5/widgets"
 )
@@ -167,5 +169,115 @@ func TestUserNickAtVisibleRowUsesScrollOffset(t *testing.T) {
 	}
 	if nick != "Dave" {
 		t.Fatalf("nick = %q, want Dave", nick)
+	}
+}
+
+func newInputHistoryTestApp() *App {
+	state := model.New(100)
+	state.Ensure("test", "#one")
+	return &App{
+		state:        state,
+		input:        widgets.NewInput(),
+		inputHistory: make(map[string]*inputHistoryState),
+	}
+}
+
+func TestInputHistoryRecallsMessagesCommandsAndDraft(t *testing.T) {
+	app := newInputHistoryTestApp()
+	app.addInputHistory("hello channel")
+	app.addInputHistory("/whois Alice")
+	app.input.Text = "unfinished draft"
+
+	app.inputHistoryPrevious()
+	if app.input.Text != "/whois Alice" {
+		t.Fatalf("first previous = %q, want newest command", app.input.Text)
+	}
+	app.inputHistoryPrevious()
+	if app.input.Text != "hello channel" {
+		t.Fatalf("second previous = %q, want earlier message", app.input.Text)
+	}
+	app.inputHistoryNext()
+	if app.input.Text != "/whois Alice" {
+		t.Fatalf("first next = %q, want newer command", app.input.Text)
+	}
+	app.inputHistoryNext()
+	if app.input.Text != "unfinished draft" {
+		t.Fatalf("next past newest = %q, want saved draft", app.input.Text)
+	}
+}
+
+func TestInputHistoryIsPerBuffer(t *testing.T) {
+	app := newInputHistoryTestApp()
+	app.addInputHistory("public message")
+
+	app.state.Ensure("test", "Alice")
+	app.state.Select("test", "Alice")
+	app.addInputHistory("private message")
+	app.input.Text = ""
+	app.inputHistoryPrevious()
+	if app.input.Text != "private message" {
+		t.Fatalf("query history = %q, want private message", app.input.Text)
+	}
+
+	app.state.Select("test", "#one")
+	app.resetInputHistoryNavigation()
+	app.input.Text = ""
+	app.inputHistoryPrevious()
+	if app.input.Text != "public message" {
+		t.Fatalf("channel history = %q, want public message", app.input.Text)
+	}
+}
+
+func TestInputHistorySkipsConsecutiveDuplicates(t *testing.T) {
+	app := newInputHistoryTestApp()
+	app.addInputHistory("same")
+	app.addInputHistory("same")
+	h := app.inputHistoryCurrent()
+	if h == nil || len(h.entries) != 1 {
+		t.Fatalf("history entries = %#v, want one consecutive duplicate", h)
+	}
+}
+
+func TestInputHistoryDefaultsToTenEntriesPerBuffer(t *testing.T) {
+	app := newInputHistoryTestApp()
+	for i := 0; i < 15; i++ {
+		app.addInputHistory(fmt.Sprintf("line %d", i))
+	}
+	h := app.inputHistoryCurrent()
+	if h == nil || len(h.entries) != 10 {
+		t.Fatalf("history entries = %#v, want 10 entries", h)
+	}
+	if h.entries[0] != "line 5" || h.entries[9] != "line 14" {
+		t.Fatalf("history range = %#v, want lines 5..14", h.entries)
+	}
+}
+
+func TestInputHistoryConfiguredLimit(t *testing.T) {
+	limit := 3
+	app := newInputHistoryTestApp()
+	app.cfg = &config.Config{General: config.GeneralConfig{InputHistoryLimit: &limit}}
+	for i := 0; i < 5; i++ {
+		app.addInputHistory(fmt.Sprintf("line %d", i))
+	}
+	h := app.inputHistoryCurrent()
+	if h == nil || len(h.entries) != 3 {
+		t.Fatalf("history entries = %#v, want 3 entries", h)
+	}
+	if h.entries[0] != "line 2" || h.entries[2] != "line 4" {
+		t.Fatalf("history range = %#v, want lines 2..4", h.entries)
+	}
+}
+
+func TestInputHistoryCanBeDisabled(t *testing.T) {
+	limit := 0
+	app := newInputHistoryTestApp()
+	app.cfg = &config.Config{General: config.GeneralConfig{InputHistoryLimit: &limit}}
+	app.addInputHistory("not stored")
+	h := app.inputHistoryCurrent()
+	if h == nil {
+		t.Fatal("inputHistoryCurrent returned nil")
+	}
+	if len(h.entries) != 0 {
+		t.Fatalf("history entries = %#v, want none", h.entries)
 	}
 }
