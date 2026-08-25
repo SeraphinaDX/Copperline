@@ -1067,6 +1067,7 @@ func isChannelHousekeepingNumeric(command string) bool {
 		"332", // RPL_TOPIC
 		"333", // RPL_TOPICWHOTIME
 		"352", // RPL_WHOREPLY
+		"354", // RPL_WHOSPCRPL (WHOX reply)
 		"353", // RPL_NAMREPLY
 		"366": // RPL_ENDOFNAMES
 		return true
