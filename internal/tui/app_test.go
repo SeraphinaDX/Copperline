@@ -7,6 +7,7 @@ import (
 	"copperline/internal/config"
 	"copperline/internal/model"
 
+	ui "github.com/metaspartan/gotui/v5"
 	"github.com/metaspartan/gotui/v5/widgets"
 )
 
@@ -279,5 +280,26 @@ func TestInputHistoryCanBeDisabled(t *testing.T) {
 	}
 	if len(h.entries) != 0 {
 		t.Fatalf("history entries = %#v, want none", h.entries)
+	}
+}
+
+func TestPrintableInputTextAllowsLiteralLessThan(t *testing.T) {
+	tests := []struct {
+		name string
+		id   string
+		want string
+	}{
+		{name: "literal less than", id: "<", want: "<"},
+		{name: "literal greater than", id: ">", want: ">"},
+		{name: "ordinary text", id: "x", want: "x"},
+		{name: "special key", id: "<Enter>", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := printableInputText(ui.Event{ID: tt.id}); got != tt.want {
+				t.Fatalf("printableInputText(%q) = %q, want %q", tt.id, got, tt.want)
+			}
+		})
 	}
 }

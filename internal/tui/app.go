@@ -644,12 +644,37 @@ func (a *App) handleKey(e ui.Event) {
 	case "<Space>":
 		a.input.InsertRune(' ')
 	default:
-		if !strings.HasPrefix(id, "<") {
-			for _, r := range id {
-				a.input.InsertRune(r)
-			}
+		for _, r := range printableInputText(e) {
+			a.input.InsertRune(r)
 		}
 	}
+}
+
+// printableInputText returns text for an ordinary printable keyboard event.
+// gotui uses angle-bracket strings such as <Enter> for special keys, but a
+// literal '<' rune also has an event ID beginning with '<'. Prefer the raw
+// tcell KeyRune payload so user input is never mistaken for gotui notation.
+func printableInputText(e ui.Event) string {
+	if keyEvent, ok := e.Payload.(*tcell.EventKey); ok && keyEvent != nil && keyEvent.Key() == tcell.KeyRune {
+		// Ctrl/Alt rune events are shortcuts, not text input. Shift is allowed:
+		// terminals commonly report characters such as '<' as Shift+',' while
+		// Str() already contains the printable result.
+		if keyEvent.Modifiers()&(tcell.ModCtrl|tcell.ModAlt) != 0 {
+			return ""
+		}
+		return keyEvent.Str()
+	}
+
+	// Keep a small fallback for terminals/backends that do not expose the raw
+	// tcell event payload. '<' itself is printable; other leading-angle IDs are
+	// gotui special-key notation.
+	if e.ID == "<" {
+		return "<"
+	}
+	if !strings.HasPrefix(e.ID, "<") {
+		return e.ID
+	}
+	return ""
 }
 
 // inputHistoryCurrent returns the session history for the active buffer. Input
