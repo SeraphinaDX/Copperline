@@ -162,7 +162,7 @@ Global defaults and client-wide behavior.
 | `show_join_messages` | bool | `true` | Shows `nick joined` lines in channel buffers. Set to `false` to hide JOIN messages while still tracking channel membership normally. |
 | `history_lines` | integer | `1000` | Maximum number of live messages retained in each in-memory buffer. Values `<= 0` are reset to `1000`. |
 | `input_history_limit` | integer | `10` | Maximum number of messages/commands remembered per buffer for Up/Down input history during the current session. `0` disables input history. Negative values are rejected. |
-| `log_backlog_lines` | integer | `10` | On the first visit to a channel buffer during a session, display this many lines from the end of its plaintext log in the muted theme color before live messages. Revisiting the buffer preserves its live transcript and does not reload the preview. Set to `0` to disable. |
+| `log_backlog_lines` | integer | `10` | On the first visit to a channel buffer during a session, display this many persisted lines from before the current Copperline run in the muted theme color. Messages received during the current run always use normal live styling, even if the channel is first opened much later. Set to `0` to disable. |
 | `reconnect_seconds` | integer | `10` | Delay between reconnect attempts. Values `<= 0` are reset to `10`. |
 
 ## IRCv3 typing indicators
@@ -254,7 +254,7 @@ When `logging = false`, Copperline does not create or append log files. Normal i
 
 ### Channel log backlog
 
-When logging is enabled, Copperline uses the log as a small persistent backlog the first time you enter a channel during a session. By default it reads the final 10 meaningful lines and shows them in `theme.muted`, then appends new live IRC messages normally underneath. Switching away and back restores that same live transcript instead of reloading the log preview:
+When logging is enabled, Copperline uses the log as a small persistent backlog the first time you enter a channel during a session. By default it reads the final 10 meaningful lines that existed **before the current Copperline process began logging that buffer** and shows them in `theme.muted`. Any retained messages received during the current run are rendered normally underneath, even if they arrived hours before you first opened the channel. Switching away and back restores that same live transcript instead of reloading the log preview:
 
 ```toml
 [general]

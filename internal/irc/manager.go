@@ -750,6 +750,17 @@ func (m *Manager) CurrentNick(server string) string {
 	return c.GetNick()
 }
 
+// IsConnected reports whether the named server currently has a live IRC
+// connection. Unlike client(), this is a status probe and intentionally does
+// not turn a disconnected server into an error for callers such as the TUI.
+func (m *Manager) IsConnected(server string) bool {
+	s, err := m.session(server)
+	if err != nil {
+		return false
+	}
+	return s.client.IsConnected()
+}
+
 // WantsConnection reports whether the user has asked Copperline to keep this
 // server connected. It lets the UI distinguish an automatic reconnect from a
 // deliberate /disconnect without exposing Session internals.

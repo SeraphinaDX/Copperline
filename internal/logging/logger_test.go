@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
+
+	"copperline/internal/model"
 )
 
 func TestTailLines(t *testing.T) {
@@ -48,6 +51,52 @@ func TestLoggerTailUsesBufferPath(t *testing.T) {
 	want := []string{"newer", "newest"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Tail() = %#v, want %#v", got, want)
+	}
+}
+
+func TestBacklogTailStopsAtCurrentSessionBoundary(t *testing.T) {
+	dir := t.TempDir()
+	serverDir := filepath.Join(dir, "libera")
+	if err := os.MkdirAll(serverDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(serverDir, "#later.log")
+	old := "2026-08-26 12:00:00 <alice> yesterday one\n" +
+		"2026-08-26 12:01:00 <bob> yesterday two\n"
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	l := New(true, dir, "2006-01-02 15:04:05")
+	if err := l.Write(model.Message{
+		Time:   time.Date(2026, 8, 27, 20, 0, 0, 0, time.Local),
+		Server: "libera",
+		Target: "#later",
+		Nick:   "carol",
+		Text:   "arrived before first view",
+		Kind:   model.KindMessage,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := l.BacklogTail("libera", "#later", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"2026-08-26 12:00:00 <alice> yesterday one",
+		"2026-08-26 12:01:00 <bob> yesterday two",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("BacklogTail() = %#v, want only pre-session context %#v", got, want)
+	}
+
+	tail, err := l.Tail("libera", "#later", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tail) != 1 || tail[0] != "2026-08-27 20:00:00 <carol> arrived before first view" {
+		t.Fatalf("Tail() = %#v, want current-session line to still be logged normally", tail)
 	}
 }
 

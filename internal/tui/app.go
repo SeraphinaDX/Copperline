@@ -92,6 +92,9 @@ type App struct {
 	connectionMu     sync.Mutex
 	connectionSeen   map[string]bool
 	reconnectPending map[string]bool
+
+	startupComplete     atomic.Bool
+	startupLastActivity atomic.Int64
 }
 
 func New(cfg *config.Config) *App {
@@ -115,6 +118,7 @@ func New(cfg *config.Config) *App {
 		}
 	}
 	a.irc = ircclient.New(cfg, a.onMessage)
+	a.startupLastActivity.Store(time.Now().UnixNano())
 	if cfg.Scripting.EnabledValue() {
 		a.scripts = scripting.New(config.ExpandPath(cfg.Scripting.Dir), scripting.Host{
 			Print: func(server, target, text string) {
@@ -239,7 +243,17 @@ func (a *App) Run() error {
 		case <-typingTicker.C:
 			a.syncOutgoingTyping()
 			if !a.copyMode {
-				a.refreshTypingIndicator()
+				// During startup, repaint on the small existing ticker so the loading
+				// indicator animates and can transition to ready after the initial
+				// IRC event burst goes quiet. Once startup is complete, return to the
+				// cheaper input-only typing-indicator refresh.
+				wasStarting := !a.startupComplete.Load()
+				loading, _ := a.startupLoading()
+				if loading || wasStarting {
+					a.render()
+				} else {
+					a.refreshTypingIndicator()
+				}
 			}
 		}
 	}
@@ -277,6 +291,9 @@ func (a *App) onMessage(msg model.Message) {
 }
 
 func (a *App) onIRCEvent(ev ircclient.Event) {
+	if !a.startupComplete.Load() {
+		a.startupLastActivity.Store(time.Now().UnixNano())
+	}
 	a.handleConnectionFeedback(ev)
 
 	if a.scripts != nil {
@@ -359,15 +376,109 @@ func (a *App) requestRedraw() {
 // of rebuilding the entire interface on a timer.
 func (a *App) refreshTypingIndicator() {
 	b := a.state.CurrentInfo()
-	title := "Message"
-	if b != nil {
-		title = typingInputTitle(a.irc.TypingUsers(b.Server, b.Target))
-	}
-	if title == a.input.Title {
+	title, placeholder := a.inputDisplayState(b)
+	if title == a.input.Title && placeholder == a.input.Placeholder {
 		return
 	}
 	a.input.Title = title
+	a.input.Placeholder = placeholder
 	ui.Render(a.input)
+}
+
+type startupProgress struct {
+	connectedServers int
+	totalServers     int
+	joinedChannels   int
+	totalChannels    int
+}
+
+func (p startupProgress) allReady() bool {
+	return p.connectedServers == p.totalServers && p.joinedChannels == p.totalChannels
+}
+
+func (a *App) currentStartupProgress() startupProgress {
+	var p startupProgress
+	for _, server := range a.cfg.Servers {
+		if !server.AutoConnect {
+			continue
+		}
+		p.totalServers++
+		if a.irc.IsConnected(server.Name) {
+			p.connectedServers++
+		}
+		for _, channel := range server.Channels {
+			p.totalChannels++
+			if a.irc.IsJoined(server.Name, channel) {
+				p.joinedChannels++
+			}
+		}
+	}
+	return p
+}
+
+// startupLoading remains true until every auto-connect server/channel is up
+// and the initial burst of IRC state updates has been quiet briefly. The quiet
+// period is important on large channels: JOIN may complete before NAMES/WHO
+// synchronization has finished, which is exactly when the UI can still feel
+// busy even though the socket is technically connected.
+func (a *App) startupLoading() (bool, startupProgress) {
+	p := a.currentStartupProgress()
+	if a.startupComplete.Load() {
+		return false, p
+	}
+	if p.totalServers == 0 {
+		a.startupComplete.Store(true)
+		return false, p
+	}
+	if !p.allReady() {
+		return true, p
+	}
+	last := time.Unix(0, a.startupLastActivity.Load())
+	if time.Since(last) < 750*time.Millisecond {
+		return true, p
+	}
+	a.startupComplete.Store(true)
+	return false, p
+}
+
+func startupSpinner(now time.Time) string {
+	frames := [...]string{"|", "/", "-", "\\"}
+	return frames[(now.UnixMilli()/250)%int64(len(frames))]
+}
+
+// inputDisplayState makes it explicit when the selected target cannot accept
+// chat yet. Commands remain available during startup, but the normal Message
+// title does not appear until the current server/channel is usable.
+func (a *App) inputDisplayState(b *model.BufferInfo) (title, placeholder string) {
+	if b == nil {
+		return "Message", "Type a message or /help"
+	}
+	if !a.irc.IsConnected(b.Server) {
+		if a.irc.WantsConnection(b.Server) {
+			return "Connecting - please wait", "Waiting for " + b.Server + "..."
+		}
+		return "Disconnected", "Use /connect to connect to " + b.Server
+	}
+	if model.IsChannel(b.Target) && !a.irc.IsJoined(b.Server, b.Target) {
+		return "Joining - please wait", "Waiting to join " + b.Target + "..."
+	}
+	return typingInputTitle(a.irc.TypingUsers(b.Server, b.Target)), "Type a message or /help"
+}
+
+// chatWaitReason is checked before clearing the input on Enter. Keeping the
+// draft in place makes an early keypress harmless instead of making the user
+// retype a message after startup finishes.
+func (a *App) chatWaitReason(server, target string) string {
+	if !a.irc.IsConnected(server) {
+		if a.irc.WantsConnection(server) {
+			return "Still connecting to " + server + "; message kept in input."
+		}
+		return "Not connected to " + server + "; message kept in input."
+	}
+	if model.IsChannel(target) && !a.irc.IsJoined(server, target) {
+		return "Still joining " + target + "; message kept in input."
+	}
+	return ""
 }
 
 func (a *App) notifyGotify(msg model.Message, self string) {
@@ -622,6 +733,14 @@ func (a *App) handleKey(e ui.Event) {
 	switch id {
 	case "<Enter>":
 		line := strings.TrimSpace(a.input.Text)
+		if line != "" && !strings.HasPrefix(line, "/") {
+			if b := a.state.CurrentInfo(); b != nil {
+				if reason := a.chatWaitReason(b.Server, b.Target); reason != "" {
+					a.local(b.Server, b.Target, model.KindSystem, reason)
+					return
+				}
+			}
+		}
 		if line != "" {
 			a.addInputHistory(line)
 		}
@@ -1416,7 +1535,15 @@ func (a *App) rebuildSidebar() {
 	}
 	for _, server := range servers {
 		serverKey := model.Key(server, "*server*")
-		label := numberLabel(len(rows)+1) + styled("◆", a.cfg.Theme.Server) + " " + server
+		serverIcon := styled("◆", a.cfg.Theme.Server)
+		if !a.irc.IsConnected(server) {
+			if a.irc.WantsConnection(server) {
+				serverIcon = styled("◌", a.cfg.Theme.Notice)
+			} else {
+				serverIcon = styled("◇", a.cfg.Theme.Muted)
+			}
+		}
+		label := numberLabel(len(rows)+1) + serverIcon + " " + server
 		if serverKey == current {
 			selected = len(rows)
 		}
@@ -1429,6 +1556,8 @@ func (a *App) rebuildSidebar() {
 			prefix := "  " + styled("·", a.cfg.Theme.Muted) + " "
 			if model.IsChannel(b.Target) && a.irc.IsJoined(b.Server, b.Target) {
 				prefix = "  " + styled("✓", a.cfg.Theme.Channel) + " "
+			} else if model.IsChannel(b.Target) && a.irc.IsConnected(b.Server) && a.irc.WantsConnection(b.Server) {
+				prefix = "  " + styled("…", a.cfg.Theme.Notice) + " "
 			} else if !model.IsChannel(b.Target) {
 				prefix = "  " + styled("@", a.cfg.Theme.Query) + " "
 			}
@@ -1562,14 +1691,14 @@ func (a *App) rebuildCurrent() {
 	}
 
 	// Pull only messages that arrived after the rows currently cached by the
-	// TUI. In log-backlog mode transcriptTotal is initialized to the buffer's
-	// current total, so old in-memory messages are intentionally skipped.
+	// TUI. A first visit with persistent backlog starts at total zero so all
+	// retained messages from this Copperline session are rendered as live rows.
 	window := a.state.CurrentWindow(a.transcriptTotal)
 	if window == nil {
 		return
 	}
 
-	a.input.Title = typingInputTitle(a.irc.TypingUsers(b.Server, b.Target))
+	a.input.Title, a.input.Placeholder = a.inputDisplayState(b)
 
 	if a.transcriptFromLog {
 		// If a buffer was left inactive long enough that some unseen messages
@@ -1708,6 +1837,20 @@ func (a *App) rebuildCurrent() {
 		a.status.Text = fmt.Sprintf(" Jump to buffer: %s  Enter select  %s cancel ", digits, a.cfg.Keybindings.JumpCancel)
 		return
 	}
+	if loading, progress := a.startupLoading(); loading {
+		phase := "Loading IRC state - please wait"
+		if progress.connectedServers < progress.totalServers {
+			phase = "Connecting to IRC servers - please wait"
+		} else if progress.joinedChannels < progress.totalChannels {
+			phase = "Joining configured channels - please wait"
+		}
+		a.status.Text = fmt.Sprintf(" STARTING %s  servers %d/%d  channels %d/%d  %s ",
+			startupSpinner(time.Now()),
+			progress.connectedServers, progress.totalServers,
+			progress.joinedChannels, progress.totalChannels,
+			phase)
+		return
+	}
 	a.status.Text = fmt.Sprintf(" %s  %s%s  nick:%s  IRCv3:%d caps  DCC:%d  %s/%s buffers  %s/%s users  %s/%s history  %s jump  %s/%s scroll  /help ",
 		b.Server, b.Target, joinState, nick, caps, offers,
 		a.cfg.Keybindings.NextBuffer, a.cfg.Keybindings.PreviousBuffer,
@@ -1718,8 +1861,9 @@ func (a *App) rebuildCurrent() {
 }
 
 // loadChannelLogBacklog initializes a newly selected channel from the last few
-// plaintext log lines. Returning true means the caller should treat the
-// transcript as disk-backed context plus only messages newer than b.Total.
+// plaintext log lines from before this Copperline session. Returning true
+// means the caller should keep that muted context and then render all retained
+// current-session messages from model.State using normal live styling.
 func (a *App) loadChannelLogBacklog(b *model.BufferInfo) bool {
 	if b == nil || !model.IsChannel(b.Target) || !a.cfg.General.LoggingEnabled() {
 		return false
@@ -1750,8 +1894,12 @@ func (a *App) loadChannelLogBacklog(b *model.BufferInfo) bool {
 	}
 	a.transcriptFromLog = true
 	a.transcriptBacklogRows = len(lines)
-	a.transcriptStart = b.Total
-	a.transcriptTotal = b.Total
+	// State totals start at zero for each Copperline process. Starting the live
+	// cursor at zero is intentional: a channel may have accumulated messages
+	// for hours before the user first opens it, and those messages are still
+	// current-session traffic, not muted persistent history.
+	a.transcriptStart = 0
+	a.transcriptTotal = 0
 	return true
 }
 

@@ -16,6 +16,12 @@ The code is deliberately split into an IRC core, TUI, buffer model, logging laye
 
 ## Features
 
+- Clear startup feedback: while auto-connect servers and configured channels are
+  still loading, Copperline shows an animated `STARTING` status with server and
+  channel progress, marks connecting/joining entries in the sidebar, and changes
+  the input title to `Connecting - please wait` or `Joining - please wait`.
+  Messages submitted too early are kept in the input box instead of being lost.
+
 - **Native Go application** with garbage collection, goroutines, and a multithreaded runtime
 - **Multiple IRC networks at once**, each with multiple channels and private-message/query buffers
 - **Modern IRCv3 support** with CAP negotiation, message tags, server-time, echo-message, typing indicators, CHATHISTORY, account/away/chghost state, and more
@@ -138,7 +144,7 @@ You can also select another configuration:
 
 ### Logging
 
-Logging is enabled by default. The first time you open a channel during a Copperline session, Copperline shows the last 10 meaningful persisted log lines in the muted theme color before new live traffic. Switching away and back preserves that channel's live transcript; the log preview is not reloaded. This keeps channel context useful without rebuilding a large historical transcript. Configure or disable it with `general.log_backlog_lines`.
+Logging is enabled by default. The first time you open a channel during a Copperline session, Copperline shows up to the last 10 meaningful persisted lines from **before the current Copperline session** in the muted theme color, then shows every retained message received during the current run with normal live styling. This remains true even if you do not open that channel until much later. Switching away and back preserves that channel's live transcript; the log preview is not reloaded. Configure or disable it with `general.log_backlog_lines`.
 
 Disable all on-disk IRC logs while keeping normal in-memory scrollback with:
 

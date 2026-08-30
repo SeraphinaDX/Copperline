@@ -2,14 +2,79 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"copperline/internal/config"
+	"copperline/internal/logging"
 	"copperline/internal/model"
 
 	ui "github.com/metaspartan/gotui/v5"
 	"github.com/metaspartan/gotui/v5/widgets"
 )
+
+func TestFirstChannelVisitKeepsCurrentSessionMessagesLive(t *testing.T) {
+	dir := t.TempDir()
+	serverDir := filepath.Join(dir, "libera")
+	if err := os.MkdirAll(serverDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(serverDir, "#later.log"),
+		[]byte("2026-08-26 12:00:00 <alice> persisted context\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	loggingEnabled := true
+	backlogLines := 10
+	cfg := &config.Config{General: config.GeneralConfig{
+		Logging:         &loggingEnabled,
+		LogDir:          dir,
+		Timestamp:       "2006-01-02 15:04:05",
+		HistoryLines:    100,
+		LogBacklogLines: &backlogLines,
+	}}
+	logger := logging.New(true, dir, cfg.General.Timestamp)
+	state := model.New(100)
+	msg := model.Message{
+		Time:   time.Date(2026, 8, 27, 20, 0, 0, 0, time.Local),
+		Server: "libera",
+		Target: "#later",
+		Nick:   "carol",
+		Text:   "current session before first view",
+		Kind:   model.KindMessage,
+	}
+	state.Add(msg)
+	state.Select("libera", "#later")
+	if err := logger.Write(msg); err != nil {
+		t.Fatal(err)
+	}
+
+	app := &App{
+		cfg:        cfg,
+		state:      state,
+		logger:     logger,
+		transcript: &transcriptList{List: widgets.NewList()},
+	}
+	if !app.loadChannelLogBacklog(state.CurrentInfo()) {
+		t.Fatal("loadChannelLogBacklog returned false; expected persisted context")
+	}
+	if app.transcriptTotal != 0 || app.transcriptStart != 0 {
+		t.Fatalf("first-view live cursor = start %d total %d, want 0/0", app.transcriptStart, app.transcriptTotal)
+	}
+	if app.transcriptBacklogRows != 1 {
+		t.Fatalf("backlog rows = %d, want 1 pre-session row", app.transcriptBacklogRows)
+	}
+
+	window := state.CurrentWindow(app.transcriptTotal)
+	if window == nil || len(window.Messages) != 1 || window.Messages[0].Text != msg.Text {
+		t.Fatalf("current-session window = %#v, want the message received before first view", window)
+	}
+}
 
 func TestScrollTranscriptBottomEmptyListIsSafe(t *testing.T) {
 	list := &transcriptList{List: widgets.NewList()}
@@ -301,5 +366,47 @@ func TestPrintableInputTextAllowsLiteralLessThan(t *testing.T) {
 				t.Fatalf("printableInputText(%q) = %q, want %q", tt.id, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestStartupProgressAllReady(t *testing.T) {
+	if !(startupProgress{}).allReady() {
+		t.Fatal("empty startup progress should be ready")
+	}
+	if (startupProgress{connectedServers: 1, totalServers: 2}).allReady() {
+		t.Fatal("startup with a disconnected server reported ready")
+	}
+	if (startupProgress{connectedServers: 1, totalServers: 1, joinedChannels: 1, totalChannels: 2}).allReady() {
+		t.Fatal("startup with an unjoined channel reported ready")
+	}
+	if !(startupProgress{connectedServers: 2, totalServers: 2, joinedChannels: 3, totalChannels: 3}).allReady() {
+		t.Fatal("fully connected startup did not report ready")
+	}
+}
+
+func TestInputDisplayStateShowsConnectingBeforeChatIsReady(t *testing.T) {
+	cfg := &config.Config{
+		General: config.GeneralConfig{HistoryLines: 10},
+		Servers: []config.ServerConfig{{
+			Name:        "testnet",
+			Host:        "irc.example.invalid",
+			Port:        6697,
+			TLS:         true,
+			Nick:        "tester",
+			User:        "tester",
+			AutoConnect: true,
+			Channels:    []string{"#one"},
+		}},
+	}
+	app := New(cfg)
+	title, placeholder := app.inputDisplayState(&model.BufferInfo{Server: "testnet", Target: "#one"})
+	if title != "Connecting - please wait" {
+		t.Fatalf("title = %q, want connecting state", title)
+	}
+	if placeholder != "Waiting for testnet..." {
+		t.Fatalf("placeholder = %q, want server wait message", placeholder)
+	}
+	if reason := app.chatWaitReason("testnet", "#one"); reason == "" {
+		t.Fatal("chatWaitReason allowed chat before connection")
 	}
 }
