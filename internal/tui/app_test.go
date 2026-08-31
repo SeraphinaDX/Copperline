@@ -410,3 +410,17 @@ func TestInputDisplayStateShowsConnectingBeforeChatIsReady(t *testing.T) {
 		t.Fatal("chatWaitReason allowed chat before connection")
 	}
 }
+
+func TestResetUIAfterScriptReloadForcesCleanTranscriptWidget(t *testing.T) {
+	app := &App{}
+	if app.transcriptReset {
+		t.Fatal("transcriptReset unexpectedly true before reset")
+	}
+
+	// No gotui screen is initialized in this unit test; the helper must still
+	// be safe and mark the next render for a fresh transcript widget.
+	app.resetUIAfterScriptReload()
+	if !app.transcriptReset {
+		t.Fatal("script reload did not request a clean transcript rebuild")
+	}
+}

@@ -2096,6 +2096,23 @@ func (a *App) execute(line string) {
 	}
 }
 
+// resetUIAfterScriptReload forces the next render through a fresh transcript
+// widget and clears any cells left behind by gotui's previous viewport. A Lua
+// reload can run startup hooks which print one or more lines before the reload
+// command itself reports success. Keeping the old List instance across that
+// burst can leave gotui's private scroll/geometry state one physical line out
+// of sync even though Copperline's transcript rows are correct.
+//
+// Reload is initiated from the UI goroutine, so clearing the terminal here is
+// safe. Tests and other non-interactive callers may not have an initialized
+// screen, in which case marking transcriptReset is sufficient.
+func (a *App) resetUIAfterScriptReload() {
+	a.transcriptReset = true
+	if ui.DefaultBackend.Screen != nil {
+		ui.Clear()
+	}
+}
+
 func (a *App) executeLua(b *model.Buffer, sub, tail string) {
 	if a.scripts == nil {
 		a.local(b.Server, b.Target, model.KindError, "Lua scripting is disabled")
@@ -2113,9 +2130,11 @@ func (a *App) executeLua(b *model.Buffer, sub, tail string) {
 		loaded, err := a.scripts.Reload()
 		if err != nil {
 			a.local(b.Server, b.Target, model.KindError, "Lua reload: "+err.Error())
+			a.resetUIAfterScriptReload()
 			return
 		}
 		a.local(b.Server, b.Target, model.KindSystem, fmt.Sprintf("Lua: loaded %d script(s)", len(loaded)))
+		a.resetUIAfterScriptReload()
 	case "eval":
 		code := strings.TrimSpace(tail)
 		if code == "" {
