@@ -1691,9 +1691,10 @@ func (a *App) rebuildCurrent() {
 				a.transcriptFromLog = false
 				a.transcriptBacklogRows = 0
 
-				// Seed a channel from disk only on its first visit. Later visits
-				// restore the cached live transcript above.
-				a.loadChannelLogBacklog(b)
+				// Seed conversational buffers (channels and private-message queries)
+				// from disk only on their first visit. Later visits restore the
+				// cached live transcript above.
+				a.loadConversationLogBacklog(b)
 			}
 		} else {
 			// A resize should not change what the user was reading. Carry the
@@ -1880,12 +1881,14 @@ func (a *App) rebuildCurrent() {
 		a.cfg.Keybindings.TranscriptPageUp, a.cfg.Keybindings.TranscriptPageDown)
 }
 
-// loadChannelLogBacklog initializes a newly selected channel from the last few
-// plaintext log lines from before this Copperline session. Returning true
-// means the caller should keep that muted context and then render all retained
-// current-session messages from model.State using normal live styling.
-func (a *App) loadChannelLogBacklog(b *model.BufferInfo) bool {
-	if b == nil || !model.IsChannel(b.Target) || !a.cfg.General.LoggingEnabled() {
+// loadConversationLogBacklog initializes a newly selected conversational
+// buffer (channel or private-message query) from the last few plaintext log
+// lines from before this Copperline session. Server buffers are deliberately
+// excluded. Returning true means the caller should keep that muted context and
+// then render all retained current-session messages from model.State using
+// normal live styling.
+func (a *App) loadConversationLogBacklog(b *model.BufferInfo) bool {
+	if b == nil || b.Target == "*server*" || !a.cfg.General.LoggingEnabled() {
 		return false
 	}
 	n := a.cfg.General.LogBacklogLinesValue()
@@ -1893,9 +1896,9 @@ func (a *App) loadChannelLogBacklog(b *model.BufferInfo) bool {
 		return false
 	}
 
-	// Pin the boundary on first view even if this channel has not received a
-	// message yet. If it has received traffic already, onMessage pinned the same
-	// boundary before exposing that traffic to state, so this is a no-op.
+	// Pin the boundary on first view even if this channel/query has not received
+	// a message yet. If it has received traffic already, onMessage pinned the
+	// same boundary before exposing that traffic to state, so this is a no-op.
 	if err := a.logger.BeginBuffer(b.Server, b.Target); err != nil {
 		return false
 	}
@@ -1921,9 +1924,9 @@ func (a *App) loadChannelLogBacklog(b *model.BufferInfo) bool {
 	a.transcriptFromLog = true
 	a.transcriptBacklogRows = len(lines)
 	// State totals start at zero for each Copperline process. Starting the live
-	// cursor at zero is intentional: a channel may have accumulated messages
-	// for hours before the user first opens it, and those messages are still
-	// current-session traffic, not muted persistent history.
+	// cursor at zero is intentional: a channel or PM query may have accumulated
+	// messages for hours before the user first opens it, and those messages are
+	// still current-session traffic, not muted persistent history.
 	a.transcriptStart = 0
 	a.transcriptTotal = 0
 	return true

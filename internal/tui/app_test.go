@@ -60,8 +60,8 @@ func TestFirstChannelVisitKeepsCurrentSessionMessagesLive(t *testing.T) {
 		logger:     logger,
 		transcript: &transcriptList{List: widgets.NewList()},
 	}
-	if !app.loadChannelLogBacklog(state.CurrentInfo()) {
-		t.Fatal("loadChannelLogBacklog returned false; expected persisted context")
+	if !app.loadConversationLogBacklog(state.CurrentInfo()) {
+		t.Fatal("loadConversationLogBacklog returned false; expected persisted context")
 	}
 	if app.transcriptTotal != 0 || app.transcriptStart != 0 {
 		t.Fatalf("first-view live cursor = start %d total %d, want 0/0", app.transcriptStart, app.transcriptTotal)
@@ -73,6 +73,95 @@ func TestFirstChannelVisitKeepsCurrentSessionMessagesLive(t *testing.T) {
 	window := state.CurrentWindow(app.transcriptTotal)
 	if window == nil || len(window.Messages) != 1 || window.Messages[0].Text != msg.Text {
 		t.Fatalf("current-session window = %#v, want the message received before first view", window)
+	}
+}
+
+func TestFirstPrivateMessageVisitKeepsCurrentSessionMessagesLive(t *testing.T) {
+	dir := t.TempDir()
+	serverDir := filepath.Join(dir, "libera")
+	if err := os.MkdirAll(serverDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(serverDir, "alice.log"),
+		[]byte("2026-09-06 12:00:00 <alice> persisted private context\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	loggingEnabled := true
+	backlogLines := 10
+	cfg := &config.Config{General: config.GeneralConfig{
+		Logging:         &loggingEnabled,
+		LogDir:          dir,
+		Timestamp:       "2006-01-02 15:04:05",
+		HistoryLines:    100,
+		LogBacklogLines: &backlogLines,
+	}}
+	logger := logging.New(true, dir, cfg.General.Timestamp)
+	state := model.New(100)
+	msg := model.Message{
+		Time:   time.Date(2026, 9, 7, 0, 40, 0, 0, time.Local),
+		Server: "libera",
+		Target: "alice",
+		Nick:   "alice",
+		Text:   "current session before opening query",
+		Kind:   model.KindMessage,
+	}
+
+	// Match App.onMessage ordering: pin the log boundary before exposing the PM
+	// to state, then append it to the persistent log.
+	if err := logger.BeginBuffer(msg.Server, msg.Target); err != nil {
+		t.Fatal(err)
+	}
+	state.Add(msg)
+	if err := logger.Write(msg); err != nil {
+		t.Fatal(err)
+	}
+	state.Select("libera", "alice")
+
+	app := &App{
+		cfg:        cfg,
+		state:      state,
+		logger:     logger,
+		transcript: &transcriptList{List: widgets.NewList()},
+	}
+	if !app.loadConversationLogBacklog(state.CurrentInfo()) {
+		t.Fatal("loadConversationLogBacklog returned false for PM query")
+	}
+	if app.transcriptBacklogRows != 1 {
+		t.Fatalf("PM backlog rows = %d, want 1 pre-session row", app.transcriptBacklogRows)
+	}
+	if app.transcriptTotal != 0 || app.transcriptStart != 0 {
+		t.Fatalf("PM first-view live cursor = start %d total %d, want 0/0", app.transcriptStart, app.transcriptTotal)
+	}
+
+	window := state.CurrentWindow(app.transcriptTotal)
+	if window == nil || len(window.Messages) != 1 || window.Messages[0].Text != msg.Text {
+		t.Fatalf("PM current-session window = %#v, want delayed live PM", window)
+	}
+
+	// The persisted seed must be muted, but the current-session PM must be
+	// formatted through the normal live-message path when rebuildCurrent appends
+	// the window above it.
+	if len(app.transcript.Rows) != 1 || app.transcript.Rows[0] == msg.Text {
+		t.Fatalf("PM persisted seed = %#v, want one separate backlog row", app.transcript.Rows)
+	}
+}
+
+func TestServerBufferDoesNotLoadPersistentConversationBacklog(t *testing.T) {
+	loggingEnabled := true
+	backlogLines := 10
+	cfg := &config.Config{General: config.GeneralConfig{
+		Logging:         &loggingEnabled,
+		LogDir:          t.TempDir(),
+		Timestamp:       "2006-01-02 15:04:05",
+		LogBacklogLines: &backlogLines,
+	}}
+	app := &App{cfg: cfg, logger: logging.New(true, cfg.General.LogDir, cfg.General.Timestamp), transcript: &transcriptList{List: widgets.NewList()}}
+	if app.loadConversationLogBacklog(&model.BufferInfo{Server: "libera", Target: "*server*"}) {
+		t.Fatal("server buffer unexpectedly loaded conversational backlog")
 	}
 }
 

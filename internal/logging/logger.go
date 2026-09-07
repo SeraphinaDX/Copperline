@@ -179,8 +179,8 @@ func tailLinesAt(f *os.File, n int, end int64) ([]string, error) {
 	return lines, nil
 }
 
-// BacklogTail returns the last n meaningful log lines for display when a
-// channel is opened. Older Copperline versions logged routine channel-sync
+// BacklogTail returns the last n meaningful pre-session log lines for display
+// when a conversational buffer is opened. Older Copperline versions logged routine channel-sync
 // numerics, so filter those legacy entries here rather than resurrecting the
 // protocol noise through the persistent backlog feature.
 func (l *Logger) BacklogTail(server, target string, n int) ([]string, error) {
@@ -209,8 +209,8 @@ func (l *Logger) BacklogTail(server, target string, n int) ([]string, error) {
 	if sessionStart, ok := l.sessionStart[path]; ok && sessionStart < end {
 		// The muted preview is persistent context from before this process
 		// started receiving messages. Current-session lines are rendered from
-		// model.State instead, so opening a channel hours later cannot recolor
-		// live traffic as log history.
+		// model.State instead, so opening a channel or PM query hours later cannot
+		// recolor live traffic as log history.
 		end = sessionStart
 	}
 
