@@ -54,6 +54,49 @@ func TestLoggerTailUsesBufferPath(t *testing.T) {
 	}
 }
 
+func TestBeginBufferPinsDynamicChannelBacklogBeforeDelayedAppend(t *testing.T) {
+	dir := t.TempDir()
+	serverDir := filepath.Join(dir, "libera")
+	if err := os.MkdirAll(serverDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(serverDir, "#manual.log")
+	old := "2026-08-30 12:00:00 <alice> previous session\n"
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	l := New(true, dir, "2006-01-02 15:04:05")
+	// #manual is intentionally not known from any configuration. The TUI marks
+	// the buffer before making its first current-session message visible.
+	if err := l.BeginBuffer("libera", "#manual"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate disk logging catching up after the UI has already exposed this
+	// message. BacklogTail must still stop at the boundary captured above.
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("2026-08-31 10:00:00 <bob> current session\n"); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := l.BacklogTail("libera", "#manual", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"2026-08-30 12:00:00 <alice> previous session"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("BacklogTail() = %#v, want only pre-session context %#v", got, want)
+	}
+}
+
 func TestBacklogTailStopsAtCurrentSessionBoundary(t *testing.T) {
 	dir := t.TempDir()
 	serverDir := filepath.Join(dir, "libera")

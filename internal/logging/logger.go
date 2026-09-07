@@ -33,6 +33,39 @@ func New(enabled bool, dir, timestamp string) *Logger {
 	}
 }
 
+// BeginBuffer records the byte offset where this Copperline process first
+// became aware of a buffer. It must be called before a current-session message
+// is exposed to the TUI. Doing that ordering explicitly prevents a first-view
+// redraw from racing the logger and mistaking freshly received traffic for
+// muted persistent backlog, especially for channels joined outside the config.
+func (l *Logger) BeginBuffer(server, target string) error {
+	if !l.enabled {
+		return nil
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.beginBufferLocked(server, target)
+}
+
+func (l *Logger) beginBufferLocked(server, target string) error {
+	path := filepath.Join(l.dir, safe(server), safe(target)+".log")
+	if _, ok := l.sessionStart[path]; ok {
+		return nil
+	}
+
+	stat, err := os.Stat(path)
+	switch {
+	case err == nil:
+		l.sessionStart[path] = stat.Size()
+	case os.IsNotExist(err):
+		l.sessionStart[path] = 0
+	default:
+		return err
+	}
+	return nil
+}
+
 func (l *Logger) Write(m model.Message) error {
 	if !l.enabled {
 		return nil
@@ -40,6 +73,9 @@ func (l *Logger) Write(m model.Message) error {
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if err := l.beginBufferLocked(m.Server, m.Target); err != nil {
+		return err
+	}
 	server := safe(m.Server)
 	target := safe(m.Target)
 	dir := filepath.Join(l.dir, server)
@@ -47,17 +83,6 @@ func (l *Logger) Write(m model.Message) error {
 		return err
 	}
 	path := filepath.Join(dir, target+".log")
-	if _, ok := l.sessionStart[path]; !ok {
-		stat, statErr := os.Stat(path)
-		switch {
-		case statErr == nil:
-			l.sessionStart[path] = stat.Size()
-		case os.IsNotExist(statErr):
-			l.sessionStart[path] = 0
-		default:
-			return statErr
-		}
-	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err

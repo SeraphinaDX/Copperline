@@ -61,6 +61,7 @@ type App struct {
 	follow                bool
 	transcriptKey         string
 	transcriptReset       bool
+	forceScreenSync       bool
 	transcriptStart       uint64
 	transcriptTotal       uint64
 	transcriptFromLog     bool
@@ -271,9 +272,14 @@ func (a *App) onMessage(msg model.Message) {
 			msg.Mention = true
 		}
 	}
+	// Establish the persistent-log boundary before this message becomes visible
+	// to the UI. For dynamically joined channels, the first redraw can otherwise
+	// race the first log write and classify current-session traffic as muted
+	// backlog when the channel is opened or revisited later.
+	_ = a.logger.BeginBuffer(msg.Server, msg.Target)
 	a.state.Add(msg)
 	// Wake the UI immediately after the message becomes visible in state. Do
-	// this before disk logging, notifications, or script callbacks so those
+	// this before the actual append, notifications, or script callbacks so those
 	// side effects can never hold up the on-screen conversation.
 	a.requestRedraw()
 	_ = a.logger.Write(msg)
@@ -1517,7 +1523,21 @@ func (a *App) render() {
 		a.refreshUserRows(userListVisibleRows(h))
 		items = append(items, a.users)
 	}
+
+	// A normal gotui render is incremental. After a script reload we need a
+	// physical-screen resync, not just a logical clear: terminal output from a
+	// script or stale tcell cells can otherwise survive until some later event
+	// happens to repaint that row. Clear the logical screen immediately before
+	// the rebuilt frame and then ask tcell to rewrite every visible cell.
+	forceSync := a.forceScreenSync && ui.DefaultBackend.Screen != nil
+	if forceSync {
+		ui.DefaultBackend.Screen.Clear()
+	}
 	ui.Render(items...)
+	if forceSync {
+		ui.DefaultBackend.Screen.Sync()
+		a.forceScreenSync = false
+	}
 }
 
 func (a *App) rebuildSidebar() {
@@ -1873,6 +1893,12 @@ func (a *App) loadChannelLogBacklog(b *model.BufferInfo) bool {
 		return false
 	}
 
+	// Pin the boundary on first view even if this channel has not received a
+	// message yet. If it has received traffic already, onMessage pinned the same
+	// boundary before exposing that traffic to state, so this is a no-op.
+	if err := a.logger.BeginBuffer(b.Server, b.Target); err != nil {
+		return false
+	}
 	lines, err := a.logger.BacklogTail(b.Server, b.Target, n)
 	if err != nil {
 		return false
@@ -2097,20 +2123,18 @@ func (a *App) execute(line string) {
 }
 
 // resetUIAfterScriptReload forces the next render through a fresh transcript
-// widget and clears any cells left behind by gotui's previous viewport. A Lua
-// reload can run startup hooks which print one or more lines before the reload
-// command itself reports success. Keeping the old List instance across that
-// burst can leave gotui's private scroll/geometry state one physical line out
-// of sync even though Copperline's transcript rows are correct.
-//
-// Reload is initiated from the UI goroutine, so clearing the terminal here is
-// safe. Tests and other non-interactive callers may not have an initialized
-// screen, in which case marking transcriptReset is sufficient.
+// widget and requests a full physical-screen resync. A Lua reload can run
+// startup hooks which print one or more lines before the reload command itself
+// reports success. Rebuilding the List fixes gotui's private viewport state;
+// forcing tcell.Sync after that rebuilt frame fixes stale terminal cells which
+// an incremental render may otherwise leave behind.
 func (a *App) resetUIAfterScriptReload() {
 	a.transcriptReset = true
-	if ui.DefaultBackend.Screen != nil {
-		ui.Clear()
-	}
+	a.forceScreenSync = true
+	// executeLua normally runs inside the UI event loop, which renders after the
+	// command returns. Keep this wake-up as a safety net for any future caller
+	// that triggers a reload outside an input event.
+	a.requestRedraw()
 }
 
 func (a *App) executeLua(b *model.Buffer, sub, tail string) {

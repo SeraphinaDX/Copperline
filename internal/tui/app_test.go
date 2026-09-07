@@ -412,15 +412,27 @@ func TestInputDisplayStateShowsConnectingBeforeChatIsReady(t *testing.T) {
 }
 
 func TestResetUIAfterScriptReloadForcesCleanTranscriptWidget(t *testing.T) {
-	app := &App{}
+	app := &App{redraw: make(chan struct{}, 1)}
 	if app.transcriptReset {
 		t.Fatal("transcriptReset unexpectedly true before reset")
 	}
+	if app.forceScreenSync {
+		t.Fatal("forceScreenSync unexpectedly true before reset")
+	}
 
 	// No gotui screen is initialized in this unit test; the helper must still
-	// be safe and mark the next render for a fresh transcript widget.
+	// mark both halves of the repair. The next real render rebuilds the List and
+	// then performs a physical tcell Sync so stale terminal cells cannot linger.
 	app.resetUIAfterScriptReload()
 	if !app.transcriptReset {
 		t.Fatal("script reload did not request a clean transcript rebuild")
+	}
+	if !app.forceScreenSync {
+		t.Fatal("script reload did not request a physical screen resync")
+	}
+	select {
+	case <-app.redraw:
+	default:
+		t.Fatal("script reload did not request a redraw")
 	}
 }
