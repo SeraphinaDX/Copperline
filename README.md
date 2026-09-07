@@ -1,10 +1,10 @@
 # Copperline
 
-Copperline is my modern terminal IRC client: a multi-server, multi-channel client written in **Go** with `github.com/metaspartan/gotui/v5`. I wanted something that still feels like a traditional IRC client while taking advantage of a modern language, a responsive TUI, and the parts of IRCv3 that make IRC nicer to use today.
+**Copperline is a modern terminal IRC client and native SSH relay/bouncer written in Go.** It is built for people who still love IRC, but do not want to give up a fast native application, modern IRCv3 features, rich terminal UI, scripting, notifications, persistent sessions, or strong customization.
 
-Go is a particularly good fit for Copperline. It compiles to a fast native executable, has a **garbage-collected runtime**, and is designed for concurrency. Copperline uses goroutines for work that should happen independently—IRC connections, reconnect handling, DCC transfers, notifications, and timers—while Go's **multithreaded runtime** can execute that work across OS threads and CPU cores. The result is a client that can be doing several things at once without turning the UI architecture into a maze.
+Copperline is not a toy IRC example and it is not just a thin wrapper around an IRC library. It is an everyday multi-network client with its own buffer model, responsive TUI, persistent logging, DCC, Gotify notifications, Lua scripting, configurable keyboard and mouse controls, true-color themes, IRCv3 support, and an **embedded SSH relay system that can keep your IRC sessions alive when your local client is gone**.
 
-Copperline is not intended to be a tiny IRC demo. It has grown into a full everyday client with multiple networks, IRCv3, SASL, DCC, scrollback and logging, Gotify notifications, typing indicators, mouse support, true-color themes, nickname completion, direct buffer jumping, CTCP, and the usual IRC commands I actually want to use.
+One Copperline installation can connect directly to IRC, run headlessly as a persistent relay, or act as a local TUI attached to a remote Copperline relay. The relay transport is built directly into Copperline using Go's SSH libraries: **no system `ssh`, no `sshd`, no web service, no TLS certificate, and no certificate authority are required.**
 
 ![Copperline main interface](screenshots/screenshot1.avif)
 
@@ -12,38 +12,158 @@ Copperline is not intended to be a tiny IRC demo. It has grown into a full every
 
 ![Copperline Gotify notifications](screenshots/screenshot3.avif)
 
-The code is deliberately split into an IRC core, TUI, buffer model, logging layer, configuration loader, notification client, and DCC manager. Go makes that separation pleasantly straightforward, and keeps Copperline from becoming one giant `main.go` as it grows.
+## Why Copperline is different
+
+Copperline deliberately combines the things people expect from a traditional IRC client with features that are usually split across a client, a bouncer, shell tools, and notification services.
+
+- **A real native terminal IRC client** — built in Go, compiled to a native executable, and designed around concurrent network work without making the UI wait on it.
+- **A built-in SSH relay/bouncer** — run Copperline on a server, keep IRC connected there, and attach Copperline clients from other machines.
+- **No external SSH daemon required** — relay mode has its own embedded SSH server and private Copperline channel protocol.
+- **No certificate-authority hassle** — relay clients authenticate with SSH public keys and pin the relay's SSH host-key fingerprint.
+- **Safer relay message delivery** — chat text is not cleared from the input field until the relay acknowledges the request. If the transport dies or a send cannot be confirmed, the text stays in the input instead of silently disappearing.
+- **Relay health monitoring** — the client heartbeats the SSH transport and exposes an always-visible reconnect control with a configurable shortcut.
+- **Multiple attached clients** — more than one Copperline client can attach to the same relay while the relay maintains the IRC connections.
+- **Modern IRCv3 without abandoning classic IRC** — server-time, message tags, echo-message, typing indicators, CHATHISTORY, account/away state, SASL, CTCP, DCC, `/raw`, and the familiar slash-command workflow all live together.
+- **A TUI meant to be lived in** — channel topics, nick lists, mouse support, buffer numbers, direct jumps, nickname completion, per-buffer input history, copy mode, startup progress, and configurable keybindings.
+- **Lua scripting built in** — add commands, react to IRC events, automate repetitive work, and extend Copperline without recompiling it.
+- **Notifications without freezing IRC** — Gotify requests run asynchronously and can alert on mentions and private messages.
+- **Everything is themeable** — true-color palettes cover buffers, nicks, mentions, message types, borders, input, cursor, status areas, and more.
+
+Copperline is designed so the IRC connection, UI, logging, scripting, notifications, relay transport, and DCC code remain separate pieces rather than collapsing into one giant `main.go`.
+
+## Feature highlights
+
+### Native Copperline SSH relay
+
+Copperline can be its own IRC bouncer.
+
+Run one Copperline instance in relay-server mode on an always-on machine. It maintains the real IRC connections, retains bounded in-memory conversation history, tracks channel state, and accepts Copperline clients over its **embedded SSH server**.
+
+A relay client runs the normal Copperline TUI locally while the remote relay stays connected to IRC. Closing the local client does not make the relay leave your networks and channels.
+
+Relay mode includes:
+
+- public-key-only authentication;
+- automatically generated Ed25519 host and client keys;
+- SHA-256 host-key fingerprint pinning;
+- a Copperline-specific `authorized_keys` file;
+- multiple attached Copperline clients;
+- retained message replay when a client attaches again;
+- synchronized server, channel, topic, nick-list, capability, typing, and connection state;
+- suppression of huge WHO/NAMES housekeeping floods such as `352`, `353`, and `354` from the relay transport;
+- an SSH heartbeat so stale connections stop pretending to be healthy;
+- a dedicated clickable **RECONNECT** control in relay-client mode;
+- **Alt+R** as the default configurable force-reconnect shortcut;
+- safe force reconnect that replaces only the local SSH attachment and leaves IRC connected on the relay;
+- relay send acknowledgement before Copperline clears normal chat text from the input field.
+
+The embedded SSH endpoint is intentionally narrow. It does **not** provide a shell, PTY, SFTP, remote command execution, or SSH port forwarding. It accepts Copperline's private relay channel only.
+
+See [`RELAY.md`](RELAY.md) for complete setup instructions.
+
+### Modern IRCv3
+
+Copperline requests a broad modern capability set while still behaving like a recognizable IRC client. Depending on what the IRC network supports, Copperline can use:
+
+- CAP negotiation;
+- message tags;
+- server-time;
+- echo-message;
+- account-notify and account-tag;
+- away-notify;
+- chghost;
+- extended-join;
+- multi-prefix;
+- userhost-in-names;
+- labeled-response;
+- standard replies;
+- CHATHISTORY;
+- event playback;
+- read markers;
+- IRCv3 `+typing` client tags;
+- SASL PLAIN and EXTERNAL.
+
+The negotiated capability set is visible with `/caps`, and `/raw` remains available for network-specific features and experiments.
+
+### A responsive, practical TUI
+
+Copperline's interface is designed for long-running everyday use rather than a minimal demo.
+
+- multiple IRC networks at once;
+- channels and private-query buffers;
+- numbered buffers;
+- direct buffer jumping with `F6`;
+- next/previous buffer shortcuts;
+- channel topics with wrapping;
+- scrollable nick list;
+- mouse wheel support for transcripts and nick lists;
+- double-click a nick to open a private query;
+- channel-aware nickname completion with Tab cycling;
+- `Up` / `Down` per-buffer message and command history;
+- configurable input-history limit, defaulting to 10 entries per buffer;
+- page and single-line transcript scrolling;
+- WeeChat-style bare/copy mode for easy terminal text selection;
+- visible startup progress while servers connect and channels join;
+- drafts kept in the input when Copperline is not ready to send them;
+- configurable keybindings with collision and validation checks;
+- compatibility handling for modern terminal Ctrl/Alt key event forms.
+
+### Lua scripting
+
+Copperline embeds Lua for client-side extension and automation. Scripts can:
+
+- register custom slash commands;
+- receive IRC event hooks;
+- send messages and notices;
+- write local buffer text;
+- send raw IRC commands;
+- inspect the active server, target, and nickname;
+- reload without restarting Copperline.
+
+Use `/lua reload` to reload scripts. Copperline performs a physical terminal resync after script reloads to keep the TUI clean.
+
+See [`SCRIPTING.md`](SCRIPTING.md) for the complete scripting API and [`scripts/`](scripts/) for examples.
+
+### DCC, Gotify, logging, and themes
+
+Copperline also includes features that are often missing from smaller terminal IRC clients:
+
+- active DCC SEND;
+- incoming DCC CHAT;
+- asynchronous Gotify notifications for mentions and private messages;
+- per-network/per-buffer persistent logs;
+- configurable date/time stamps;
+- muted pre-session conversation backlog without confusing current-session messages with old log text;
+- configurable mention highlighting;
+- deterministic per-nick colors;
+- full true-color theme customization.
 
 ## Features
 
-- Clear startup feedback: while auto-connect servers and configured channels are
-  still loading, Copperline shows an animated `STARTING` status with server and
-  channel progress, marks connecting/joining entries in the sidebar, and changes
-  the input title to `Connecting - please wait` or `Joining - please wait`.
-  Messages submitted too early are kept in the input box instead of being lost.
-
 - **Native Go application** with garbage collection, goroutines, and a multithreaded runtime
 - **Multiple IRC networks at once**, each with multiple channels and private-message/query buffers
-- **Native Copperline SSH relay/bouncer mode** — keep IRC sessions alive on a headless Copperline server and attach one or more local Copperline TUIs over an embedded, public-key-authenticated SSH transport; no system `ssh`, `sshd`, TLS certificate, or CA is required
+- **Native Copperline SSH relay/bouncer mode** with embedded SSH and public-key authentication
+- **Relay message safety** with send acknowledgement, heartbeat health detection, and force reconnect
 - **Modern IRCv3 support** with CAP negotiation, message tags, server-time, echo-message, typing indicators, CHATHISTORY, account/away/chghost state, and more
 - **TLS and SASL** with PLAIN and EXTERNAL authentication
 - **Real DCC support** for sending and receiving files, plus incoming DCC CHAT
-- **Gotify notifications** for mentions and private messages without blocking the IRC client
-- **Persistent local logs** organized per network and buffer, with configurable timestamps, a muted 10-line conversation backlog on first open, and an option to disable logging entirely
-- **True-color theming** for nicks, message types, buffer state, borders, input, status bars, mentions, and more
+- **Gotify notifications** for mentions and private messages without blocking IRC
+- **Persistent local logs** organized per network and buffer
+- **True-color theming** for nicks, message types, buffer state, borders, input, status areas, mentions, and more
 - **Traditional IRC usability** with nick lists, channel topics, CTCP, `/whois`, `/me`, `/notice`, `/raw`, and familiar slash commands
-- **Fast buffer navigation** with numbered buffers, `F6` direct jumping, and `Ctrl-N` / `Ctrl-P`
+- **Fast buffer navigation** with numbered buffers, `F6` direct jumping, and configurable next/previous shortcuts
 - **Nickname completion** with channel-aware Tab completion and match cycling
-- **Mouse support** for scrollback, buffer selection, and opening private queries from the nick list
-- **Automatic reconnect** and independent per-server connection handling
-- **Configurable JOIN-message noise**, typing privacy, logging, mouse behavior, notifications, and other day-to-day preferences
+- **Mouse support** for scrollback, buffer selection, nick-list scrolling, private-query opening, and relay reconnect
+- **Automatic IRC reconnect** and independent per-server connection handling
+- **Clear startup feedback** with connecting/joining states and progress information
+- **Configurable JOIN-message noise**, typing privacy, logging, mouse behavior, notifications, history limits, and other day-to-day preferences
 - **TOML configuration** with environment-variable support for passwords and tokens
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
-- Raw IRC access remains available for network-specific commands and newer extensions that do not yet have dedicated UI
+- **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
 ## Requirements
 
-Copperline now requires Go 1.26 or newer. Relay mode uses the September 2026 SSH security fixes in golang.org/x/crypto v0.56.0.
+Copperline requires **Go 1.26 or newer**. Relay mode uses the September 2026 SSH security fixes in `golang.org/x/crypto v0.56.0`.
 
 ## Build
 
@@ -52,9 +172,15 @@ go mod tidy
 go build -o Copperline ./cmd/copperline
 ```
 
+Check the version with:
+
+```sh
+./Copperline -version
+```
+
 ## Configuration
 
-For the complete TOML reference, defaults, inheritance rules, theme options, DCC, SASL, and IRCv3 capability settings, see [`CONFIGURATION.md`](CONFIGURATION.md).
+For the complete TOML reference, defaults, theme options, DCC, SASL, IRCv3 capability settings, keybindings, logging, and relay settings, see [`CONFIGURATION.md`](CONFIGURATION.md).
 
 For Lua scripts, custom commands, event hooks, and the complete scripting API, see [`SCRIPTING.md`](SCRIPTING.md).
 
@@ -75,7 +201,15 @@ mkdir -p ~/.config/copperline
 cp config.example.toml ~/.config/copperline/config.toml
 ```
 
-For passwords, environment variables are preferable to putting secrets directly in TOML. Copperline reads the variable named by `password_env` in your server or SASL configuration.
+A different configuration file can be selected with:
+
+```sh
+./Copperline -config=./my-config.toml
+```
+
+### Passwords and secrets
+
+For passwords and tokens, environment variables are preferable to storing secrets directly in TOML. Copperline reads the variable named by `password_env`, `token_env`, or the relevant secret setting.
 
 For example, a Libera SASL configuration can use:
 
@@ -91,39 +225,7 @@ username = "myNick"
 password_env = "LIBERA_IRC_PASSWORD"
 ```
 
-### Native SSH relay mode
-
-Copperline can run as a headless IRC relay and keep the IRC connections alive while local Copperline TUIs attach over Copperline's own embedded SSH server. The SSH endpoint accepts only Copperline's private relay channel; it does not expose a shell or port forwarding.
-
-Select the role in TOML:
-
-```toml
-[relay]
-mode = "direct" # direct, server, or client
-```
-
-A relay server still contains the normal `[[server]]` IRC definitions. A relay client may omit them entirely because it receives the server/channel state from the relay. See [`RELAY.md`](RELAY.md) for setup.
-
-Relay-client mode also exposes a dedicated, always-visible **⟳ RECONNECT** control at the bottom-right of the TUI, with **Alt+R** as the default configurable shortcut (`[keybindings].relay_reconnect`). It reconnects only the SSH attachment, not the relay's IRC sessions. The relay client heartbeats the SSH transport every five seconds; a failed/timed-out relay request marks the attachment disconnected instead of continuing to display cached IRC state as healthy. Normal chat text is not cleared from the input until the relay acknowledges the send request.
-
-### Fish shell passwords
-
-With fish, export the password in the shell before starting Copperline:
-
-```fish
-set -x LIBERA_IRC_PASSWORD 'your-password-here'
-./Copperline
-```
-
-`set -x` exports the variable so Copperline can read it. The variable exists only for the current fish session unless you deliberately make it persistent. Start Copperline from that same shell.
-
-For a password containing spaces or shell metacharacters, keep it quoted:
-
-```fish
-set -x LIBERA_IRC_PASSWORD 'a password with spaces & symbols!'
-```
-
-To avoid typing the password visibly on the command line, fish can prompt for it without echoing the characters:
+With fish:
 
 ```fish
 read -s -P 'Libera IRC password: ' LIBERA_IRC_PASSWORD
@@ -131,38 +233,38 @@ set -x LIBERA_IRC_PASSWORD $LIBERA_IRC_PASSWORD
 ./Copperline
 ```
 
-To verify that the variable is exported without printing the password itself:
-
-```fish
-set -q LIBERA_IRC_PASSWORD; and echo 'LIBERA_IRC_PASSWORD is set'
-```
-
-To remove it from the current shell afterward:
-
-```fish
-set -e LIBERA_IRC_PASSWORD
-```
-
-You *can* make an exported fish variable persistent with `set -Ux`, but that stores the value in fish's universal-variable data on disk. For passwords, a session-only `set -x` (or the hidden `read -s` approach above) is generally preferable.
-
-For bash/zsh, the equivalent is:
+For bash or zsh:
 
 ```sh
 export LIBERA_IRC_PASSWORD='your-password-here'
 ./Copperline
 ```
 
-The same pattern works for traditional IRC `PASS` authentication: point the server's `password_env` at a variable name and export that variable before starting Copperline.
+### Native SSH relay mode
 
-You can also select another configuration:
+Select the Copperline role in TOML:
 
-```sh
-./Copperline -config=./my-config.toml
+```toml
+[relay]
+mode = "direct" # direct, server, or client
 ```
+
+A relay server contains the normal `[[server]]` IRC definitions. A relay client may omit them completely because it receives IRC network and channel state from the relay.
+
+Relay-client mode has a dedicated always-visible reconnect control. By default:
+
+```toml
+[keybindings]
+relay_reconnect = "Alt+R"
+```
+
+Force reconnect tears down only the client's Copperline SSH attachment. It does not tell the relay to disconnect from IRC.
+
+See [`RELAY.md`](RELAY.md) for host-key fingerprint setup, generated client keys, `authorized_keys`, server/client configuration, retained history, and security notes.
 
 ### Logging
 
-Logging is enabled by default. The first time you open a channel during a Copperline session, Copperline shows up to the last 10 meaningful persisted lines from **before the current Copperline session** in the muted theme color, then shows every retained message received during the current run with normal live styling. This remains true even if you do not open that channel until much later. Switching away and back preserves that channel's live transcript; the log preview is not reloaded. Configure or disable it with `general.log_backlog_lines`.
+Logging is enabled by default. Copperline can show a small persisted conversation preview from before the current process/session while keeping current-session messages in normal live styling.
 
 Disable all on-disk IRC logs while keeping normal in-memory scrollback with:
 
@@ -171,12 +273,17 @@ Disable all on-disk IRC logs while keeping normal in-memory scrollback with:
 logging = false
 ```
 
-See `CONFIGURATION.md` for log paths, permissions, backlog behavior, and related options.
+The default log location is:
+
+```text
+~/.local/state/copperline/logs/<server>/<buffer>.log
+```
+
+Log files are created with mode `0600`; directories use `0700`.
 
 ### Gotify notifications
 
-
-Copperline can push incoming mentions and private messages to a Gotify server. Create a Gotify **application** and use its application token. Environment variables are recommended instead of storing the token directly in TOML.
+Copperline can push incoming mentions and private messages to Gotify. Gotify delivery is asynchronous so a slow or unavailable notification service does not freeze IRC or the TUI.
 
 ```toml
 [gotify]
@@ -189,26 +296,15 @@ priority = 5
 timeout_seconds = 5
 ```
 
-With fish:
-
-```fish
-read -s -P 'Gotify application token: ' COPPERLINE_GOTIFY_TOKEN
-set -x COPPERLINE_GOTIFY_TOKEN $COPPERLINE_GOTIFY_TOKEN
-./Copperline
-```
-
-Test the setup inside Copperline with:
+Test it from Copperline with:
 
 ```text
 /gotify test
 ```
 
-Gotify requests run asynchronously, so an unavailable notification server does not freeze IRC or the TUI. Your own messages do not generate Gotify notifications. See `CONFIGURATION.md` for every Gotify option and the exact trigger behavior.
-
 ### Theme
 
-
-Copperline has a built-in dark navy/copper/aqua theme. Add a `[theme]` section only when you want to override it. Colors may be `#RRGGBB` true-color values or gotui color names such as `cyan`, `orange`, `purple`, `skyblue`, and `lightgreen`.
+Copperline ships with a dark navy/copper/aqua theme, but the entire TUI palette can be overridden with `[theme]`.
 
 ```toml
 [theme]
@@ -240,58 +336,67 @@ status_bg = "#64d8cb"
 nick_colors = ["#ff7b72", "#f6c177", "#8bd49c", "#64d8cb", "#72c7ef", "#d9a7ff"]
 ```
 
-Nick colors are chosen deterministically from `nick_colors`, so the same nickname keeps the same color. Theme changes affect only the TUI; log files remain plain text. See `config.example.toml` for the full default palette.
+Nick colors are chosen deterministically from `nick_colors`, so the same nickname keeps the same color.
 
 ## Lua scripting
 
-Copperline embeds Lua for client-side automation and customization. Scripts load from `~/.config/copperline/scripts/*.lua` by default and can register slash commands, hook IRC events, send messages/notices, write to buffers, and use raw IRC. Use `/lua reload` to reload scripts without restarting the client.
+Copperline embeds Lua for client-side automation and customization. Scripts load from `~/.config/copperline/scripts/*.lua` by default and can register slash commands, hook IRC events, send messages/notices, write to buffers, and use raw IRC.
+
+Use:
+
+```text
+/lua reload
+```
+
+to reload scripts without restarting Copperline.
 
 The complete API lives in [`SCRIPTING.md`](SCRIPTING.md), and the source tree includes ready-to-copy examples in [`scripts/`](scripts/).
 
-## Layout
+## Layout and controls
 
-The left panel contains every configured server and its channel/query buffers. Every visible buffer is numbered in sidebar order so it can be selected directly. The middle is the current conversation. Wide terminals also get a nick list on the right. The input line is at the bottom.
+The left panel contains servers and channel/query buffers. Every visible buffer is numbered. The middle panel contains the current conversation. Wide terminals also get a nick list on the right. The topic sits above the transcript, and the message input and status/control area sit at the bottom.
 
-Keyboard controls (all of these action bindings are configurable under `[keybindings]`):
+All action bindings are configurable under `[keybindings]`. Default controls include:
 
 - `Ctrl-N`: next buffer
 - `Ctrl-P`: previous buffer
 - `Alt-N`: scroll the right-hand user list down
 - `Alt-P`: scroll the right-hand user list up
 - `F6`, number, `Enter`: jump directly to a numbered buffer
-- `Escape`: cancel an active buffer jump
-- `Tab`: complete a nickname at the cursor; repeated Tab cycles matches
-- `Up` / `Down`: recall older/newer input history for the current buffer (messages and slash commands)
-- `PageUp` / `PageDown`: scroll transcript by page
-- `Alt-K` / `Alt-J`: scroll transcript up/down by one line
-- `Alt-L`: toggle bare/copy mode for easy terminal text selection
-- `End`: return to following the newest messages
+- `Escape`: cancel buffer jump
+- `Tab`: nickname completion; repeated Tab cycles matches
+- `Up` / `Down`: older/newer input history for the current buffer
+- `PageUp` / `PageDown`: transcript by page
+- `Alt-K` / `Alt-J`: transcript by one line
+- `Alt-L`: bare/copy mode for terminal text selection
+- `End`: return to/follow newest messages
+- `Alt-R`: force reconnect to a Copperline relay while in relay-client mode
 - `Ctrl-U`: clear input
 - `Ctrl-C`: quit
 
-For example, to move nick-list scrolling from `Alt-N` / `Alt-P` to other keys:
+For example:
 
 ```toml
 [keybindings]
-user_list_down = "Alt+N"
-user_list_up = "Alt+P"
+user_list_down = "Ctrl+Y"
+user_list_up = "Ctrl+U"
 history_previous = "Up"
 history_next = "Down"
+relay_reconnect = "Alt+R"
 ```
 
-Bindings use readable names such as `Ctrl+N`, `Alt+P`, `F6`, `PageUp`, `Escape`, and `Tab`. Existing configs do not need a `[keybindings]` section; omitted values keep the defaults. Copperline rejects invalid or conflicting action bindings at startup so a typo cannot silently disable a shortcut. Configured Ctrl/Alt bindings are matched from both gotui event IDs and the underlying tcell modifier data for compatibility with modern terminal keyboard protocols.
+If you reassign a binding such as `Ctrl+U`, move any conflicting action to another key. Copperline validates configurable action keys so invalid or conflicting bindings fail clearly instead of silently doing something unexpected.
 
-Input history is kept in memory for the current Copperline session and is separate for each buffer. The default limit is 10 entries per buffer and can be changed with `input_history_limit` in `[general]` (`0` disables it). It records both ordinary messages and slash commands. When you press `Up` while a draft is in the input box, Copperline saves that draft; pressing `Down` past the newest recalled item restores it. Consecutive duplicate entries are stored only once. Older configs that explicitly used the old `Up`/`Down` transcript-line defaults are migrated automatically to `Alt+K`/`Alt+J`.
+Input history is session-only and separate for each buffer. It stores both ordinary messages and slash commands. The default is 10 entries per buffer and is configurable with:
 
-Nickname completion is channel-aware. For example, typing `ali` at the start of the input and pressing `Tab` can produce `Alice: `. If more than one nickname matches, press `Tab` repeatedly to cycle through them. When the partial nick appears later in a message, Copperline completes only the nick and does not add the reply colon.
+```toml
+[general]
+input_history_limit = 10
+```
 
-Buffer numbers are shown in the left sidebar and follow the same order used by `Ctrl-N` and `Ctrl-P`. To jump directly, press `F6`, type the displayed number, and press `Enter`. For example, if `#golang` is buffer `7`, use `F6`, `7`, `Enter`. Press `Escape` to cancel. Buffer numbers can change when buffers are opened or closed, so the sidebar is the source of truth. `Tab` remains dedicated to nickname completion.
+Set it to `0` to disable input history.
 
-Mouse controls are enabled when `general.mouse = true`. Click a server/channel/query in the sidebar, double-click a nick to open a private query, use the wheel over the transcript to scroll messages, and use the wheel over the right-hand user list to scroll nicknames.
-
-By default, `Alt-N` / `Alt-P` scroll the nick list without changing the current buffer while `Ctrl-N` / `Ctrl-P` navigate buffers. Those keyboard bindings can be changed independently in `[keybindings]`; mouse-wheel nick scrolling remains available when the pointer is over the Users pane.
-
-Press `Alt-L` for a WeeChat-style bare/copy view. Copperline temporarily hides the sidebar, topic, nick list, input, status bar, and transcript borders; disables terminal mouse reporting; and freezes redraws so you can select and copy text with the terminal normally. IRC connections, logging, DCC, Gotify notifications, and incoming message state continue in the background. Press `Alt-L` again to restore the full interface and catch up.
+Press `Alt-L` for bare/copy mode. Copperline temporarily hides the normal UI chrome and disables terminal mouse reporting so the terminal can perform normal text selection. IRC, logging, Gotify, DCC, scripting, and incoming message state continue in the background.
 
 ## Commands
 
@@ -327,7 +432,7 @@ Press `Alt-L` for a WeeChat-style bare/copy view. Copperline temporarily hides t
 /quit [reason]
 ```
 
-CTCP requests can be sent directly to another user. For example:
+CTCP examples:
 
 ```text
 /ctcp Alice VERSION
@@ -335,23 +440,7 @@ CTCP requests can be sent directly to another user. For example:
 /ctcp Alice PING 123456789
 ```
 
-Replies are displayed as system lines in that user's query buffer.
-
-## IRCv3
-
-Copperline asks for a broad modern capability set and lets the server decide what is actually enabled. The negotiated set is visible with `/caps`.
-
-The underlying girc library already implements IRCv3 CAP handling, message tags, SASL PLAIN/EXTERNAL, server-time integration, account-notify, away-notify, chghost, extended-join and user/channel state tracking. Copperline additionally requests and understands enough of the wire protocol to use CHATHISTORY, batches/message tags, echo-message, standard replies and read-marker commands while retaining `/raw` for newer extensions.
-
-Copperline also implements the IRCv3 `+typing` client tag. When another compatible user is typing, the input title changes to something like `Message — Alice is typing…`. Copperline sends `active`, `paused`, and `done` typing state for ordinary message composition, but never for `/slash commands`. Both directions are configurable:
-
-```toml
-[general]
-show_typing = true
-send_typing = true
-```
-
-Set `send_typing = false` if you prefer not to advertise your typing state. Typing tags depend on the negotiated `message-tags` capability; `+typing` itself is a client tag, not a separate capability name.
+## IRCv3 capability set
 
 Capabilities currently requested by default include:
 
@@ -381,25 +470,15 @@ draft/no-implicit-names
 draft/read-marker
 ```
 
-The IRCv3 ecosystem is still evolving. Not every requested draft capability has a dedicated Copperline UI action yet; unsupported incoming commands still pass through the event handling/logging path where girc considers them displayable, and `/raw` can be used to experiment with network-specific commands.
-
-## Logging
-
-Logs are written by default below:
-
-```text
-~/.local/state/copperline/logs/<server>/<buffer>.log
-```
-
-Log files are created with mode `0600`; directories use `0700`.
+Not every requested draft capability has a dedicated UI action yet. `/raw` remains available for experimenting with network-specific IRCv3 commands and extensions.
 
 ## DCC notes
 
-DCC is intentionally configurable and can be disabled. Traditional DCC creates a direct TCP connection between IRC users. It is not protected by the TLS connection to the IRC server and can reveal IP addresses.
+Traditional DCC establishes a direct TCP connection between IRC users. It is not protected by the TLS connection to the IRC server and can reveal IP addresses.
 
 For outgoing DCC SEND, configure `dcc.advertise_ip` to an address the other user can reach. NAT/router port forwarding may be necessary. Incoming filenames are reduced to their basename, downloads use exclusive file creation, and existing files are not overwritten.
 
-This version implements normal active DCC SEND and accepts DCC CHAT. Passive/reverse DCC SEND (`port 0`) and DCC RESUME are good next additions.
+Copperline currently implements normal active DCC SEND and incoming DCC CHAT. Passive/reverse DCC SEND (`port 0`) and DCC RESUME are possible future additions.
 
 ## Project layout
 
@@ -407,16 +486,20 @@ This version implements normal active DCC SEND and accepts DCC CHAT. Passive/rev
 cmd/copperline/       program entry point
 internal/config/      TOML configuration
 internal/model/       buffers and messages
-internal/irc/         multi-server IRC + IRCv3 manager
-internal/logging/     local logs
+internal/irc/         direct multi-server IRC + IRCv3 backend
+internal/relay/       embedded SSH relay server/client and protocol
+internal/logging/     persistent logs and pre-session backlog
 internal/gotify/      Gotify notification client
 internal/dcc/         DCC parsing and transfers
-internal/scripting/   embedded Lua runtime and plugin API
+internal/scripting/   embedded Lua runtime and scripting API
 scripts/              example Lua scripts
-internal/tui/         gotui interface and commands
+internal/tui/         gotui interface, navigation, input, and commands
 ```
-
 
 ## Mention highlighting
 
-Copperline highlights incoming messages and `/me` actions that mention your current nickname. The mention color is configurable with `theme.mention` (default `#ff9ecb`). Your own outgoing messages are never highlighted as mentions.
+Copperline highlights incoming messages and `/me` actions that mention your current nickname. The mention color is configurable with `theme.mention`. Your own outgoing messages are never highlighted as mentions.
+
+## License
+
+Copperline is licensed under the **GNU General Public License version 3 or later (GPL-3.0-or-later)**. See [`LICENSE`](LICENSE).
