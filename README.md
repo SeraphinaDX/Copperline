@@ -161,6 +161,14 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## LLM Code Policy
+
+This project does not discriminate against the use of LLM generated code. The project already does contain LLM generated code.
+
+This project also chose the language Go precisely for its memory safety.
+
+This code is daily driven by the author. All bugs are eliminated in a prompt manner by someone terminally online.
+
 ## Requirements
 
 Copperline requires **Go 1.26 or newer**. Relay mode uses the September 2026 SSH security fixes in `golang.org/x/crypto v0.56.0`.
