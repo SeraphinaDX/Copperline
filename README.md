@@ -12,6 +12,14 @@ One Copperline installation can connect directly to IRC, run headlessly as a per
 
 ![Copperline Gotify notifications](screenshots/screenshot3.avif)
 
+## LLM Code Policy
+
+This project does not discriminate against the use of LLM generated code. The project already does contain LLM generated code. Just make sure the code compiles and does not introduce new bugs or cause it not to pass tests.
+
+This project also chose the language Go precisely for its memory safety because of those guardrails for LLM generated code.
+
+This code is daily driven by the author. All bugs are eliminated in a prompt manner by someone terminally online.
+
 ## Why Copperline is different
 
 Copperline deliberately combines the things people expect from a traditional IRC client with features that are usually split across a client, a bouncer, shell tools, and notification services.
@@ -160,14 +168,6 @@ Copperline also includes features that are often missing from smaller terminal I
 - **TOML configuration** with environment-variable support for passwords and tokens
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
-
-## LLM Code Policy
-
-This project does not discriminate against the use of LLM generated code. The project already does contain LLM generated code. Just make sure the code compiles and does not introduce new bugs or cause it not to pass tests.
-
-This project also chose the language Go precisely for its memory safety because of those guardrails for LLM generated code.
-
-This code is daily driven by the author. All bugs are eliminated in a prompt manner by someone terminally online.
 
 ## Requirements
 
