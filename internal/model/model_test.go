@@ -58,3 +58,45 @@ func TestSnapshotInfoDoesNotNeedMessages(t *testing.T) {
 		t.Fatalf("snapshot info entry = %#v", infos[0])
 	}
 }
+
+func TestPrivateQueryTargetsAreCaseInsensitive(t *testing.T) {
+	s := New(100)
+	s.Select("test", "Leah")
+
+	// The server later supplies the nick's actual/current casing.
+	s.Add(Message{
+		Time:   time.Unix(1, 0),
+		Server: "test",
+		Target: "leah",
+		Nick:   "leah",
+		Text:   "hello",
+		Kind:   KindMessage,
+	})
+
+	infos, current := s.SnapshotInfo()
+	if len(infos) != 1 {
+		t.Fatalf("buffer count = %d, want 1: %#v", len(infos), infos)
+	}
+	if current != Key("test", "leah") || current != Key("test", "Leah") {
+		t.Fatalf("current key = %q, want Leah/leah to resolve identically", current)
+	}
+	if infos[0].Target != "leah" {
+		t.Fatalf("display target = %q, want server-provided casing %q", infos[0].Target, "leah")
+	}
+	if infos[0].Total != 1 {
+		t.Fatalf("message total = %d, want 1", infos[0].Total)
+	}
+
+	upper := s.Find("test", "Leah")
+	lower := s.Find("test", "leah")
+	if upper == nil || lower == nil || upper.Total != 1 || lower.Total != 1 {
+		t.Fatalf("case-insensitive Find failed: upper=%#v lower=%#v", upper, lower)
+	}
+
+	// Selecting either spelling must keep using the one existing query buffer.
+	s.Select("test", "LEAH")
+	infos, _ = s.SnapshotInfo()
+	if len(infos) != 1 {
+		t.Fatalf("selecting another case created a duplicate: %#v", infos)
+	}
+}

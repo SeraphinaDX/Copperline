@@ -73,7 +73,20 @@ func New(maxLines int) *State {
 	return &State{Buffers: make(map[string]*Buffer), MaxLines: maxLines}
 }
 
-func Key(server, target string) string { return server + "\x00" + target }
+func Key(server, target string) string {
+	// IRC nicknames are case-insensitive. Keep channel/server buffer spelling
+	// untouched, but canonicalize private-query targets so user-entered casing
+	// (for example "Leah") and server-provided casing ("leah") resolve to the
+	// same in-memory buffer.
+	if isQueryTarget(target) {
+		target = strings.ToLower(target)
+	}
+	return server + "\x00" + target
+}
+
+func isQueryTarget(target string) bool {
+	return target != "" && target != "*server*" && !IsChannel(target)
+}
 
 func (s *State) Ensure(server, target string) *Buffer {
 	s.mu.Lock()
@@ -99,6 +112,12 @@ func (s *State) Add(msg Message) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	b := s.ensureLocked(msg.Server, msg.Target)
+	// If a query was first opened with guessed/user-entered casing, adopt the
+	// spelling seen on actual IRC traffic without creating a second buffer.
+	// The map key remains the canonical case-insensitive query identity.
+	if isQueryTarget(msg.Target) && b.Target != msg.Target {
+		b.Target = msg.Target
+	}
 	b.Messages = append(b.Messages, msg)
 	b.Total++
 	if len(b.Messages) > s.MaxLines {
