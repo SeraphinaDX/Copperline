@@ -24,11 +24,12 @@ The code is deliberately split into an IRC core, TUI, buffer model, logging laye
 
 - **Native Go application** with garbage collection, goroutines, and a multithreaded runtime
 - **Multiple IRC networks at once**, each with multiple channels and private-message/query buffers
+- **Native Copperline SSH relay/bouncer mode** — keep IRC sessions alive on a headless Copperline server and attach one or more local Copperline TUIs over an embedded, public-key-authenticated SSH transport; no system `ssh`, `sshd`, TLS certificate, or CA is required
 - **Modern IRCv3 support** with CAP negotiation, message tags, server-time, echo-message, typing indicators, CHATHISTORY, account/away/chghost state, and more
 - **TLS and SASL** with PLAIN and EXTERNAL authentication
 - **Real DCC support** for sending and receiving files, plus incoming DCC CHAT
 - **Gotify notifications** for mentions and private messages without blocking the IRC client
-- **Persistent local logs** organized per network and buffer, with configurable timestamps, a muted 10-line channel backlog on open, and an option to disable logging entirely
+- **Persistent local logs** organized per network and buffer, with configurable timestamps, a muted 10-line conversation backlog on first open, and an option to disable logging entirely
 - **True-color theming** for nicks, message types, buffer state, borders, input, status bars, mentions, and more
 - **Traditional IRC usability** with nick lists, channel topics, CTCP, `/whois`, `/me`, `/notice`, `/raw`, and familiar slash commands
 - **Fast buffer navigation** with numbered buffers, `F6` direct jumping, and `Ctrl-N` / `Ctrl-P`
@@ -42,7 +43,7 @@ The code is deliberately split into an IRC core, TUI, buffer model, logging laye
 
 ## Requirements
 
-Current gotui v5 requires Go 1.24 or newer.
+Copperline now requires Go 1.26 or newer. Relay mode uses the September 2026 SSH security fixes in golang.org/x/crypto v0.56.0.
 
 ## Build
 
@@ -56,6 +57,8 @@ go build -o Copperline ./cmd/copperline
 For the complete TOML reference, defaults, inheritance rules, theme options, DCC, SASL, and IRCv3 capability settings, see [`CONFIGURATION.md`](CONFIGURATION.md).
 
 For Lua scripts, custom commands, event hooks, and the complete scripting API, see [`SCRIPTING.md`](SCRIPTING.md).
+
+For the native SSH relay/bouncer mode, including server/client TOML examples and key setup, see [`RELAY.md`](RELAY.md).
 
 Copperline defaults to:
 
@@ -87,6 +90,21 @@ mechanism = "plain"
 username = "myNick"
 password_env = "LIBERA_IRC_PASSWORD"
 ```
+
+### Native SSH relay mode
+
+Copperline can run as a headless IRC relay and keep the IRC connections alive while local Copperline TUIs attach over Copperline's own embedded SSH server. The SSH endpoint accepts only Copperline's private relay channel; it does not expose a shell or port forwarding.
+
+Select the role in TOML:
+
+```toml
+[relay]
+mode = "direct" # direct, server, or client
+```
+
+A relay server still contains the normal `[[server]]` IRC definitions. A relay client may omit them entirely because it receives the server/channel state from the relay. See [`RELAY.md`](RELAY.md) for setup.
+
+Relay-client mode also exposes a clickable **⟳ RECONNECT** control in the status bar, with **Alt+R** as the default configurable shortcut (`[keybindings].relay_reconnect`). It reconnects only the SSH attachment, not the relay's IRC sessions.
 
 ### Fish shell passwords
 

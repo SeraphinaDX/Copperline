@@ -17,18 +17,19 @@ import (
 )
 
 type Manager struct {
-	cfg        *config.Config
-	mu         sync.RWMutex
-	sessions   map[string]*Session
-	emit       func(model.Message)
-	dcc        *dcc.Manager
-	ctcpMu     sync.Mutex
-	recentCTCP map[string]time.Time
-	typingMu   sync.Mutex
-	typing     map[string]typingEntry
-	typingSent map[string]time.Time
-	eventSink  func(Event)
-	updateSink func()
+	cfg          *config.Config
+	mu           sync.RWMutex
+	sessions     map[string]*Session
+	emit         func(model.Message)
+	dcc          *dcc.Manager
+	ctcpMu       sync.Mutex
+	recentCTCP   map[string]time.Time
+	typingMu     sync.Mutex
+	typing       map[string]typingEntry
+	typingSent   map[string]time.Time
+	eventSink    func(Event)
+	updateSink   func()
+	knownTargets map[string]map[string]struct{}
 }
 
 type Event struct {
@@ -92,12 +93,13 @@ var defaultCaps = []string{
 
 func New(cfg *config.Config, emit func(model.Message)) *Manager {
 	m := &Manager{
-		cfg:        cfg,
-		sessions:   make(map[string]*Session),
-		emit:       emit,
-		recentCTCP: make(map[string]time.Time),
-		typing:     make(map[string]typingEntry),
-		typingSent: make(map[string]time.Time),
+		cfg:          cfg,
+		sessions:     make(map[string]*Session),
+		emit:         emit,
+		recentCTCP:   make(map[string]time.Time),
+		typing:       make(map[string]typingEntry),
+		typingSent:   make(map[string]time.Time),
+		knownTargets: make(map[string]map[string]struct{}),
 	}
 	m.dcc = dcc.New(
 		config.ExpandPath(cfg.DCC.DownloadDir),
@@ -111,6 +113,9 @@ func New(cfg *config.Config, emit func(model.Message)) *Manager {
 		s := &Session{cfg: sc, desired: sc.AutoConnect}
 		s.client = m.newClient(sc)
 		m.sessions[sc.Name] = s
+		for _, target := range sc.Channels {
+			m.rememberTarget(sc.Name, target)
+		}
 	}
 	return m
 }
@@ -211,6 +216,12 @@ func (m *Manager) allowCTCPReply(server string, ce girc.CTCPEvent) bool {
 	return true
 }
 
+func (m *Manager) SetMessageSink(sink func(model.Message)) {
+	m.mu.Lock()
+	m.emit = sink
+	m.mu.Unlock()
+}
+
 func (m *Manager) SetEventSink(sink func(Event)) {
 	m.mu.Lock()
 	m.eventSink = sink
@@ -283,6 +294,7 @@ func (m *Manager) ConnectServer(name string) error {
 	}
 	s.running = true
 	s.mu.Unlock()
+	m.emitUpdate()
 	go m.connectionLoop(name, s)
 	return nil
 }
@@ -325,6 +337,7 @@ func (m *Manager) DisconnectServer(name, reason string) error {
 	s.mu.Lock()
 	s.desired = false
 	s.mu.Unlock()
+	m.emitUpdate()
 	if s.client.IsConnected() {
 		s.client.Quit(reason)
 	} else {
@@ -517,6 +530,7 @@ func (m *Manager) Notice(server, target, text string) error {
 }
 
 func (m *Manager) Join(server, channel, key string) error {
+	m.rememberTarget(server, channel)
 	c, err := m.client(server)
 	if err != nil {
 		return err
@@ -739,6 +753,18 @@ func (m *Manager) ServerNames() []string {
 		out = append(out, name)
 	}
 	sort.Strings(out)
+	return out
+}
+
+func (m *Manager) KnownTargets(server string) []string {
+	m.mu.RLock()
+	set := m.knownTargets[server]
+	out := make([]string, 0, len(set))
+	for target := range set {
+		out = append(out, target)
+	}
+	m.mu.RUnlock()
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i]) < strings.ToLower(out[j]) })
 	return out
 }
 
@@ -1117,9 +1143,77 @@ func (m *Manager) serverLine(server string, kind model.Kind, text string) {
 }
 
 func (m *Manager) emitMessage(msg model.Message) {
-	if m.emit != nil {
-		m.emit(msg)
+	m.rememberTarget(msg.Server, msg.Target)
+	m.mu.RLock()
+	sink := m.emit
+	m.mu.RUnlock()
+	if sink != nil {
+		sink(msg)
 	}
+}
+
+func (m *Manager) rememberTarget(server, target string) {
+	if server == "" || target == "" || target == "*server*" {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	set := m.knownTargets[server]
+	if set == nil {
+		set = make(map[string]struct{})
+		m.knownTargets[server] = set
+	}
+	for existing := range set {
+		if strings.EqualFold(existing, target) {
+			// Query display casing should follow actual IRC traffic just like the
+			// model buffer does, without creating a second relay target.
+			if !model.IsChannel(target) && existing != target {
+				delete(set, existing)
+				set[target] = struct{}{}
+			}
+			return
+		}
+	}
+	set[target] = struct{}{}
+}
+
+// Snapshot returns the lightweight IRC state needed by relay clients. It is
+// intentionally message-free; relay history/live messages travel on their own
+// protocol frames.
+func (m *Manager) Snapshot() StateSnapshot {
+	out := StateSnapshot{DCCOffers: m.DCCOffers()}
+	for _, server := range m.ServerNames() {
+		s := ServerSnapshot{
+			Name:            server,
+			Nick:            m.CurrentNick(server),
+			Connected:       m.IsConnected(server),
+			WantsConnection: m.WantsConnection(server),
+			Capabilities:    m.Capabilities(server),
+		}
+
+		m.mu.RLock()
+		set := m.knownTargets[server]
+		targets := make([]string, 0, len(set))
+		for target := range set {
+			targets = append(targets, target)
+		}
+		m.mu.RUnlock()
+		sort.Slice(targets, func(i, j int) bool { return strings.ToLower(targets[i]) < strings.ToLower(targets[j]) })
+
+		for _, target := range targets {
+			t := TargetSnapshot{Target: target, TypingUsers: m.TypingUsers(server, target)}
+			if model.IsChannel(target) {
+				t.Joined = m.IsJoined(server, target)
+				t.Topic = m.ChannelTopic(server, target)
+				for _, nick := range m.Names(server, target) {
+					t.Users = append(t.Users, UserSnapshot{Nick: nick, Prefix: m.NickPrefix(server, target, nick)})
+				}
+			}
+			s.Targets = append(s.Targets, t)
+		}
+		out.Servers = append(out.Servers, s)
+	}
+	return out
 }
 
 func (m *Manager) session(name string) (*Session, error) {

@@ -100,3 +100,26 @@ func TestPrivateQueryTargetsAreCaseInsensitive(t *testing.T) {
 		t.Fatalf("selecting another case created a duplicate: %#v", infos)
 	}
 }
+
+func TestContainsMessageDeduplicatesRelayReplay(t *testing.T) {
+	s := New(10)
+	msg := Message{
+		Time:   time.Unix(123, 456),
+		Server: "test",
+		Target: "#chan",
+		Nick:   "alice",
+		Text:   "hello",
+		Kind:   KindMessage,
+	}
+	if s.ContainsMessage(msg) {
+		t.Fatal("empty state reported message present")
+	}
+	s.Add(msg)
+	if !s.ContainsMessage(msg) {
+		t.Fatal("state did not find retained identical message")
+	}
+	msg.Text = "different"
+	if s.ContainsMessage(msg) {
+		t.Fatal("state matched different message text")
+	}
+}

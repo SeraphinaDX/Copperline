@@ -28,6 +28,10 @@ type Message struct {
 	Kind    Kind
 	Tags    map[string]string
 	Mention bool
+	// Replay marks messages restored from a Copperline relay's retained
+	// in-memory history. The TUI displays them normally but does not re-log or
+	// re-notify them on every client attachment.
+	Replay bool
 }
 
 type Buffer struct {
@@ -228,6 +232,26 @@ func (s *State) Find(server, target string) *Buffer {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return cloneBuffer(s.Buffers[Key(server, target)])
+}
+
+// ContainsMessage reports whether the retained in-memory window already holds
+// the same relay message. It is used to de-duplicate retained relay history
+// after a forced SSH reconnect while still allowing messages received during
+// the disconnected gap to be replayed.
+func (s *State) ContainsMessage(msg Message) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	b := s.Buffers[Key(msg.Server, msg.Target)]
+	if b == nil {
+		return false
+	}
+	for i := len(b.Messages) - 1; i >= 0; i-- {
+		cur := b.Messages[i]
+		if cur.Time.Equal(msg.Time) && cur.Kind == msg.Kind && cur.Nick == msg.Nick && cur.Text == msg.Text {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *State) Close(server, target string) {

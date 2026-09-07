@@ -37,16 +37,25 @@ type inputHistoryState struct {
 	active  bool
 }
 
+type relayReconnectResult struct {
+	backend ircclient.Backend
+	err     error
+}
+
 type App struct {
 	cfg     *config.Config
 	state   *model.State
-	irc     *ircclient.Manager
+	irc     ircclient.Backend
 	logger  *logging.Logger
 	gotify  *gotifynotify.Notifier
 	scripts *scripting.Engine
 	theme   uiTheme
 	stopped atomic.Bool
 	redraw  chan struct{}
+
+	relayReconnect     func() (ircclient.Backend, error)
+	relayReconnectDone chan relayReconnectResult
+	relayReconnecting  atomic.Bool
 
 	sidebar    *widgets.List
 	transcript *transcriptList
@@ -99,18 +108,26 @@ type App struct {
 }
 
 func New(cfg *config.Config) *App {
+	return NewWithBackend(cfg, ircclient.New(cfg, nil))
+}
+
+// NewWithBackend constructs the TUI around an IRC backend. Direct mode uses
+// irc.Manager; relay-client mode supplies the SSH-backed relay client instead.
+func NewWithBackend(cfg *config.Config, backend ircclient.Backend) *App {
 	a := &App{
-		cfg:              cfg,
-		state:            model.New(cfg.General.HistoryLines),
-		logger:           logging.New(cfg.General.LoggingEnabled(), cfg.General.LogDir, cfg.General.Timestamp),
-		gotify:           gotifynotify.New(cfg.Gotify),
-		theme:            newUITheme(cfg.Theme),
-		follow:           true,
-		redraw:           make(chan struct{}, 1),
-		transcriptCaches: make(map[string]transcriptCache),
-		inputHistory:     make(map[string]*inputHistoryState),
-		connectionSeen:   make(map[string]bool),
-		reconnectPending: make(map[string]bool),
+		cfg:                cfg,
+		state:              model.New(cfg.General.HistoryLines),
+		irc:                backend,
+		logger:             logging.New(cfg.General.LoggingEnabled(), cfg.General.LogDir, cfg.General.Timestamp),
+		gotify:             gotifynotify.New(cfg.Gotify),
+		theme:              newUITheme(cfg.Theme),
+		follow:             true,
+		redraw:             make(chan struct{}, 1),
+		relayReconnectDone: make(chan relayReconnectResult, 1),
+		transcriptCaches:   make(map[string]transcriptCache),
+		inputHistory:       make(map[string]*inputHistoryState),
+		connectionSeen:     make(map[string]bool),
+		reconnectPending:   make(map[string]bool),
 	}
 	for _, s := range cfg.Servers {
 		a.state.Ensure(s.Name, "*server*")
@@ -118,7 +135,15 @@ func New(cfg *config.Config) *App {
 			a.state.Ensure(s.Name, ch)
 		}
 	}
-	a.irc = ircclient.New(cfg, a.onMessage)
+	// A relay client may intentionally have no local [[server]] entries. Seed
+	// its sidebar from the relay's initial SSH snapshot instead.
+	for _, server := range backend.ServerNames() {
+		a.state.Ensure(server, "*server*")
+		for _, target := range backend.KnownTargets(server) {
+			a.state.Ensure(server, target)
+		}
+	}
+
 	a.startupLastActivity.Store(time.Now().UnixNano())
 	if cfg.Scripting.EnabledValue() {
 		a.scripts = scripting.New(config.ExpandPath(cfg.Scripting.Dir), scripting.Host{
@@ -141,18 +166,84 @@ func New(cfg *config.Config) *App {
 				}
 				return scripting.Context{Server: b.Server, Target: b.Target, Nick: a.irc.CurrentNick(b.Server)}
 			},
-			CurrentNick: a.irc.CurrentNick,
+			CurrentNick: func(server string) string {
+				return a.irc.CurrentNick(server)
+			},
 		})
 	}
-	// Raw IRC events drive small pieces of user-facing connection feedback as
-	// well as optional Lua hooks, so keep the event sink installed even when
-	// scripting is disabled.
-	a.irc.SetEventSink(a.onIRCEvent)
-	// Wake the UI after Manager has fully applied IRC state changes. Transcript
-	// messages also wake immediately from onMessage after state.Add.
-	a.irc.SetUpdateSink(a.requestRedraw)
+	a.bindBackend(backend)
 	a.makeWidgets()
 	return a
+}
+
+func (a *App) bindBackend(backend ircclient.Backend) {
+	backend.SetMessageSink(a.onMessage)
+	backend.SetEventSink(a.onIRCEvent)
+	backend.SetUpdateSink(a.onBackendUpdate)
+}
+
+// SetRelayReconnectFactory enables the relay-client reconnect UI. The factory
+// creates a fresh SSH-backed backend; it is deliberately supplied by main so
+// the TUI remains transport-agnostic.
+func (a *App) SetRelayReconnectFactory(factory func() (ircclient.Backend, error)) {
+	a.relayReconnect = factory
+}
+
+func (a *App) relayReconnectEnabled() bool {
+	return a.cfg != nil && a.cfg.Relay.ModeValue() == "client" && a.relayReconnect != nil
+}
+
+func (a *App) requestRelayReconnect() {
+	if !a.relayReconnectEnabled() || !a.relayReconnecting.CompareAndSwap(false, true) {
+		return
+	}
+
+	// Detach the old SSH client first: a force reconnect must not leave a stale
+	// transport alive while a second attachment is created. Clear callbacks so
+	// shutdown cannot race a stale backend update into the TUI.
+	old := a.irc
+	old.SetMessageSink(nil)
+	old.SetEventSink(nil)
+	old.SetUpdateSink(nil)
+	old.Stop("Copperline relay force reconnect")
+	a.requestRedraw()
+
+	go func() {
+		backend, err := a.relayReconnect()
+		a.relayReconnectDone <- relayReconnectResult{backend: backend, err: err}
+	}()
+}
+
+func (a *App) finishRelayReconnect(result relayReconnectResult) {
+	defer a.relayReconnecting.Store(false)
+	if result.err != nil {
+		if b := a.state.CurrentInfo(); b != nil {
+			a.onMessage(model.Message{Time: time.Now(), Server: b.Server, Target: b.Target, Kind: model.KindError, Text: "Relay reconnect failed: " + result.err.Error()})
+		}
+		a.requestRedraw()
+		return
+	}
+	if result.backend == nil {
+		return
+	}
+
+	a.irc = result.backend
+	a.bindBackend(result.backend)
+	result.backend.Start()
+	a.onBackendUpdate()
+	if b := a.state.CurrentInfo(); b != nil {
+		a.onMessage(model.Message{Time: time.Now(), Server: b.Server, Target: b.Target, Kind: model.KindSystem, Text: "Relay SSH connection re-established."})
+	}
+}
+
+func (a *App) relayReconnectLabel() string {
+	if !a.relayReconnectEnabled() {
+		return ""
+	}
+	if a.relayReconnecting.Load() {
+		return "[⟳ RECONNECTING…]"
+	}
+	return fmt.Sprintf("[⟳ RECONNECT (%s)]", a.cfg.Keybindings.RelayReconnect)
 }
 
 func (a *App) makeWidgets() {
@@ -219,7 +310,7 @@ func (a *App) Run() error {
 			a.local(server, target, model.KindSystem, fmt.Sprintf("Lua: loaded %d script(s)", len(loaded)))
 		}
 	}
-	defer a.irc.Stop("Copperline exiting")
+	defer func() { a.irc.Stop("Copperline exiting") }()
 	a.irc.Start()
 	a.render()
 	events := ui.PollEvents()
@@ -238,6 +329,11 @@ func (a *App) Run() error {
 				a.render()
 			}
 		case <-a.redraw:
+			if !a.copyMode {
+				a.render()
+			}
+		case result := <-a.relayReconnectDone:
+			a.finishRelayReconnect(result)
 			if !a.copyMode {
 				a.render()
 			}
@@ -271,6 +367,19 @@ func (a *App) onMessage(msg model.Message) {
 		if self != "" && msg.Nick != "" && !strings.EqualFold(msg.Nick, self) && containsNickMention(msg.Text, self) {
 			msg.Mention = true
 		}
+	}
+	if msg.Replay {
+		// Relay-retained history is already persisted/announced by the relay
+		// server. Display it as normal conversation text without generating
+		// duplicate local logs, notifications, or Lua callbacks on each attach.
+		// A force reconnect receives the relay's bounded history again, so skip
+		// rows already retained locally while still accepting messages that
+		// arrived during the disconnected gap.
+		if !a.state.ContainsMessage(msg) {
+			a.state.Add(msg)
+			a.requestRedraw()
+		}
+		return
 	}
 	// Establish the persistent-log boundary before this message becomes visible
 	// to the UI. For dynamically joined channels, the first redraw can otherwise
@@ -368,6 +477,19 @@ func (a *App) connectionLine(server, text string) {
 	a.local(server, current.Target, model.KindSystem, text)
 }
 
+func (a *App) onBackendUpdate() {
+	// Relay snapshots can introduce configured/dynamically joined buffers that
+	// have not received a message yet. Keep the local navigation model aligned
+	// with the backend before waking the UI.
+	for _, server := range a.irc.ServerNames() {
+		a.state.Ensure(server, "*server*")
+		for _, target := range a.irc.KnownTargets(server) {
+			a.state.Ensure(server, target)
+		}
+	}
+	a.requestRedraw()
+}
+
 // requestRedraw coalesces background wake-ups without ever blocking an IRC
 // callback. All actual widget mutation/rendering remains on the TUI goroutine.
 func (a *App) requestRedraw() {
@@ -404,6 +526,18 @@ func (p startupProgress) allReady() bool {
 
 func (a *App) currentStartupProgress() startupProgress {
 	var p startupProgress
+	if a.cfg.Relay.ModeValue() == "client" {
+		for _, server := range a.irc.ServerNames() {
+			if !a.irc.WantsConnection(server) {
+				continue
+			}
+			p.totalServers++
+			if a.irc.IsConnected(server) {
+				p.connectedServers++
+			}
+		}
+		return p
+	}
 	for _, server := range a.cfg.Servers {
 		if !server.AutoConnect {
 			continue
@@ -682,6 +816,9 @@ func (a *App) handleKey(e ui.Event) {
 	// editing keys. Configuration validation reserves the essential editing keys
 	// so navigation cannot make the input field unusable.
 	switch {
+	case a.relayReconnectEnabled() && matches(keys.RelayReconnect):
+		a.requestRelayReconnect()
+		return
 	case matches(keys.CopyMode):
 		a.setCopyMode(true)
 		return
@@ -1067,6 +1204,10 @@ func (a *App) handleMouse(e ui.Event) {
 			a.resumeFollowAtBottom()
 		}
 	case "<MouseLeft>":
+		if a.mouseOverRelayReconnect(m.X, m.Y) {
+			a.requestRelayReconnect()
+			return
+		}
 		if m.X < left && m.Y > 0 {
 			a.clearNickClick()
 			row := m.Y - 1
@@ -1092,6 +1233,20 @@ func (a *App) handleMouse(e ui.Event) {
 		}
 		a.clearNickClick()
 	}
+}
+
+func (a *App) mouseOverRelayReconnect(x, y int) bool {
+	label := a.relayReconnectLabel()
+	if label == "" {
+		return false
+	}
+	w, h := ui.TerminalDimensions()
+	if y != h-1 || x < 1 || x >= w {
+		return false
+	}
+	// The relay button is intentionally the first status-bar item so the hit
+	// area is stable and derives from the exact configured-key label rendered.
+	return x <= len([]rune(label))+2
 }
 
 const (
@@ -1858,6 +2013,10 @@ func (a *App) rebuildCurrent() {
 		a.status.Text = fmt.Sprintf(" Jump to buffer: %s  Enter select  %s cancel ", digits, a.cfg.Keybindings.JumpCancel)
 		return
 	}
+	if a.relayReconnecting.Load() {
+		a.status.Text = " " + a.relayReconnectLabel() + "  Re-establishing Copperline SSH relay connection - please wait "
+		return
+	}
 	if loading, progress := a.startupLoading(); loading {
 		phase := "Loading IRC state - please wait"
 		if progress.connectedServers < progress.totalServers {
@@ -1872,8 +2031,12 @@ func (a *App) rebuildCurrent() {
 			phase)
 		return
 	}
-	a.status.Text = fmt.Sprintf(" %s  %s%s  nick:%s  IRCv3:%d caps  DCC:%d  %s/%s buffers  %s/%s users  %s/%s history  %s jump  %s/%s scroll  /help ",
-		b.Server, b.Target, joinState, nick, caps, offers,
+	relayPrefix := ""
+	if label := a.relayReconnectLabel(); label != "" {
+		relayPrefix = label + "  "
+	}
+	a.status.Text = fmt.Sprintf(" %s%s  %s%s  nick:%s  IRCv3:%d caps  DCC:%d  %s/%s buffers  %s/%s users  %s/%s history  %s jump  %s/%s scroll  /help ",
+		relayPrefix, b.Server, b.Target, joinState, nick, caps, offers,
 		a.cfg.Keybindings.NextBuffer, a.cfg.Keybindings.PreviousBuffer,
 		a.cfg.Keybindings.UserListDown, a.cfg.Keybindings.UserListUp,
 		a.cfg.Keybindings.HistoryPrevious, a.cfg.Keybindings.HistoryNext,

@@ -18,6 +18,7 @@ type Config struct {
 	DCC         DCCConfig         `toml:"dcc"`
 	Gotify      GotifyConfig      `toml:"gotify"`
 	Scripting   ScriptingConfig   `toml:"scripting"`
+	Relay       RelayConfig       `toml:"relay"`
 	Servers     []ServerConfig    `toml:"server"`
 }
 
@@ -59,6 +60,7 @@ type KeybindingsConfig struct {
 	FollowBottom       string `toml:"follow_bottom"`
 	ClearInput         string `toml:"clear_input"`
 	Quit               string `toml:"quit"`
+	RelayReconnect     string `toml:"relay_reconnect"`
 }
 
 func (k *KeybindingsConfig) applyDefaults() {
@@ -94,6 +96,7 @@ func (k *KeybindingsConfig) applyDefaults() {
 	set(&k.FollowBottom, "End")
 	set(&k.ClearInput, "Ctrl+U")
 	set(&k.Quit, "Ctrl+C")
+	set(&k.RelayReconnect, "Alt+R")
 }
 
 func (k KeybindingsConfig) namedBindings() []struct {
@@ -334,6 +337,34 @@ func (s ScriptingConfig) EnabledValue() bool {
 	return s.Enabled == nil || *s.Enabled
 }
 
+type RelayConfig struct {
+	// Mode is one of "direct" (normal Copperline), "server" (headless IRC
+	// relay with an embedded SSH server), or "client" (TUI connected to a
+	// Copperline relay over SSH).
+	Mode string `toml:"mode"`
+
+	// Server mode.
+	Listen         string `toml:"listen"`
+	HostKey        string `toml:"host_key"`
+	AuthorizedKeys string `toml:"authorized_keys"`
+
+	// Client mode.
+	Address                 string `toml:"address"`
+	User                    string `toml:"user"`
+	PrivateKey              string `toml:"private_key"`
+	PrivateKeyPassphraseEnv string `toml:"private_key_passphrase_env"`
+	HostKeyFingerprint      string `toml:"host_key_fingerprint"`
+	InsecureSkipHostKey     bool   `toml:"insecure_skip_host_key_check"`
+}
+
+func (r RelayConfig) ModeValue() string {
+	mode := strings.ToLower(strings.TrimSpace(r.Mode))
+	if mode == "" {
+		return "direct"
+	}
+	return mode
+}
+
 type ServerConfig struct {
 	Name        string   `toml:"name"`
 	Host        string   `toml:"host"`
@@ -420,6 +451,24 @@ func (c *Config) applyDefaults() {
 	}
 	if c.Scripting.Dir == "" {
 		c.Scripting.Dir = "~/.config/copperline/scripts"
+	}
+	if c.Relay.Mode == "" {
+		c.Relay.Mode = "direct"
+	}
+	if c.Relay.Listen == "" {
+		c.Relay.Listen = "127.0.0.1:2222"
+	}
+	if c.Relay.HostKey == "" {
+		c.Relay.HostKey = "~/.config/copperline/relay_host_ed25519"
+	}
+	if c.Relay.AuthorizedKeys == "" {
+		c.Relay.AuthorizedKeys = "~/.config/copperline/relay_authorized_keys"
+	}
+	if c.Relay.User == "" {
+		c.Relay.User = "copperline"
+	}
+	if c.Relay.PrivateKey == "" {
+		c.Relay.PrivateKey = "~/.config/copperline/relay_client_ed25519"
 	}
 	for i := range c.Servers {
 		s := &c.Servers[i]
@@ -518,6 +567,44 @@ func (c *Config) Validate() error {
 		seenBindings[canonical] = binding.name
 	}
 
+	mode := c.Relay.ModeValue()
+	switch mode {
+	case "direct", "server", "client":
+	default:
+		return fmt.Errorf("[relay].mode must be direct, server, or client; got %q", c.Relay.Mode)
+	}
+	if mode == "client" {
+		canonical, err := CanonicalKeyBinding(c.Keybindings.RelayReconnect)
+		if err != nil {
+			return fmt.Errorf("[keybindings].relay_reconnect: %w", err)
+		}
+		if isReservedInputKey(canonical) {
+			return fmt.Errorf("[keybindings].relay_reconnect uses reserved input key %s", c.Keybindings.RelayReconnect)
+		}
+		if other, exists := seenBindings[canonical]; exists {
+			return fmt.Errorf("[keybindings].relay_reconnect conflicts with %s (%s)", other, c.Keybindings.RelayReconnect)
+		}
+	}
+	if mode == "server" {
+		if strings.TrimSpace(c.Relay.Listen) == "" {
+			return errors.New("[relay].listen is required in server mode")
+		}
+		if strings.TrimSpace(c.Relay.AuthorizedKeys) == "" {
+			return errors.New("[relay].authorized_keys is required in server mode")
+		}
+	}
+	if mode == "client" {
+		if strings.TrimSpace(c.Relay.Address) == "" {
+			return errors.New("[relay].address is required in client mode")
+		}
+		if strings.TrimSpace(c.Relay.PrivateKey) == "" {
+			return errors.New("[relay].private_key is required in client mode")
+		}
+		if strings.TrimSpace(c.Relay.HostKeyFingerprint) == "" && !c.Relay.InsecureSkipHostKey {
+			return errors.New("relay client requires [relay].host_key_fingerprint (or explicitly set insecure_skip_host_key_check = true)")
+		}
+	}
+
 	if c.Gotify.Enabled {
 		if strings.TrimSpace(c.Gotify.URL) == "" {
 			return errors.New("gotify is enabled but [gotify].url is empty")
@@ -526,7 +613,7 @@ func (c *Config) Validate() error {
 			return errors.New("gotify is enabled but no application token is available; set token or token_env")
 		}
 	}
-	if len(c.Servers) == 0 {
+	if len(c.Servers) == 0 && mode != "client" {
 		return errors.New("configuration contains no [[server]] entries")
 	}
 	seen := map[string]bool{}

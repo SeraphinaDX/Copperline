@@ -15,10 +15,35 @@ show_join_messages = true
 history_lines = 2000
 # Input/command history kept per buffer for the current session. Set 0 to disable.
 input_history_limit = 10
-# Show this many persisted log lines in muted grey when a channel is opened.
-# Set to 0 to disable the disk-backed channel backlog.
+# Show this many persisted log lines in muted grey when a channel or private
+# query is opened. Set to 0 to disable the disk-backed conversation backlog.
 log_backlog_lines = 10
 reconnect_seconds = 10
+
+# Copperline can run normally (direct), as a headless IRC relay with its own
+# embedded SSH server (server), or as a local TUI attached to such a relay
+# (client). Direct mode preserves the traditional behavior.
+[relay]
+mode = "direct"
+
+# Relay-server settings. Uncomment/change these when mode = "server". The
+# host key is generated automatically. The authorized-keys file is created if
+# missing and re-read on every login, so adding a client key needs no restart.
+# listen = "0.0.0.0:2222"
+# user = "copperline"
+# host_key = "~/.config/copperline/relay_host_ed25519"
+# authorized_keys = "~/.config/copperline/relay_authorized_keys"
+
+# Relay-client settings. A dedicated Ed25519 client key is generated at
+# private_key (plus private_key.pub) if it does not exist. Copy the .pub file
+# into the server's authorized_keys file. Pin the fingerprint printed by the
+# relay server at startup.
+# address = "relay.example.com:2222"
+# user = "copperline"
+# private_key = "~/.config/copperline/relay_client_ed25519"
+# private_key_passphrase_env = "COPPERLINE_RELAY_KEY_PASSPHRASE"
+# host_key_fingerprint = "SHA256:replace-with-server-fingerprint"
+# insecure_skip_host_key_check = false
 
 # Optional keyboard bindings. These defaults match Copperline's built-in keys.
 # Supported forms include Ctrl+letter, Alt+letter, F1-F64, PageUp/PageDown,
@@ -41,6 +66,8 @@ copy_mode = "Alt+L"
 follow_bottom = "End"
 clear_input = "Ctrl+U"
 quit = "Ctrl+C"
+# Relay-client only. Also shown as a clickable status-bar control.
+relay_reconnect = "Alt+R"
 
 # Optional UI theme. Copperline uses these values by default if [theme] is omitted.
 # Colors may be #RRGGBB true-color values or gotui names such as

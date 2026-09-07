@@ -120,3 +120,62 @@ func TestInputHistoryLimitAllowsZeroAndRejectsNegative(t *testing.T) {
 		t.Fatal("Validate accepted negative input history limit")
 	}
 }
+
+func TestRelayClientAllowsNoLocalIRCServers(t *testing.T) {
+	cfg := Config{Relay: RelayConfig{
+		Mode:               "client",
+		Address:            "relay.example.test:2222",
+		HostKeyFingerprint: "SHA256:test",
+	}}
+	cfg.applyDefaults()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate rejected relay client without [[server]] entries: %v", err)
+	}
+	if cfg.Relay.User != "copperline" {
+		t.Fatalf("relay user default = %q, want copperline", cfg.Relay.User)
+	}
+}
+
+func TestRelayClientRequiresPinnedHostKeyByDefault(t *testing.T) {
+	cfg := Config{Relay: RelayConfig{Mode: "client", Address: "relay.example.test:2222"}}
+	cfg.applyDefaults()
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate accepted relay client without a host key fingerprint")
+	}
+	cfg.Relay.InsecureSkipHostKey = true
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate rejected explicit insecure host-key override: %v", err)
+	}
+}
+
+func TestRelayServerStillRequiresIRCServers(t *testing.T) {
+	cfg := Config{Relay: RelayConfig{Mode: "server"}}
+	cfg.applyDefaults()
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate accepted relay server with no [[server]] entries")
+	}
+}
+
+func TestRelayReconnectDefaultsToAltR(t *testing.T) {
+	cfg := Config{}
+	cfg.applyDefaults()
+	if cfg.Keybindings.RelayReconnect != "Alt+R" {
+		t.Fatalf("relay reconnect default = %q, want Alt+R", cfg.Keybindings.RelayReconnect)
+	}
+}
+
+func TestRelayReconnectConflictCheckedOnlyInClientMode(t *testing.T) {
+	cfg := Config{Servers: []ServerConfig{{Name: "test", Host: "irc.example.test"}}}
+	cfg.applyDefaults()
+	cfg.Keybindings.CopyMode = "Alt+R"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("direct mode rejected relay-only key conflict: %v", err)
+	}
+
+	cfg.Relay.Mode = "client"
+	cfg.Relay.Address = "relay.example.test:2222"
+	cfg.Relay.HostKeyFingerprint = "SHA256:test"
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("relay client accepted relay_reconnect conflict")
+	}
+}

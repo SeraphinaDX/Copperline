@@ -1,12 +1,17 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"copperline/internal/config"
+	"copperline/internal/irc"
+	"copperline/internal/relay"
 	"copperline/internal/tui"
 )
 
@@ -30,8 +35,38 @@ func main() {
 		log.Fatalf("load configuration: %v", err)
 	}
 
-	app := tui.New(cfg)
-	if err := app.Run(); err != nil {
-		log.Fatal(err)
+	switch cfg.Relay.ModeValue() {
+	case "server":
+		r, err := relay.NewServer(cfg)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Copperline relay listening on %s", cfg.Relay.Listen)
+		log.Printf("Copperline relay host key fingerprint: %s", r.HostKeyFingerprint())
+		log.Printf("Copperline relay authorized keys: %s", config.ExpandPath(cfg.Relay.AuthorizedKeys))
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := r.Run(ctx); err != nil {
+			log.Fatal(err)
+		}
+
+	case "client":
+		backend, err := relay.NewClient(cfg)
+		if err != nil {
+			log.Fatal(err)
+		}
+		app := tui.NewWithBackend(cfg, backend)
+		app.SetRelayReconnectFactory(func() (irc.Backend, error) {
+			return relay.NewClient(cfg)
+		})
+		if err := app.Run(); err != nil {
+			log.Fatal(err)
+		}
+
+	default:
+		app := tui.New(cfg)
+		if err := app.Run(); err != nil {
+			log.Fatal(err)
+		}
 	}
 }

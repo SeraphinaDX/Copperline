@@ -22,7 +22,7 @@ A different configuration file can be selected at startup:
 Copperline -config=/path/to/config.toml
 ```
 
-Copperline requires at least one `[[server]]` entry. Every server must have a unique non-empty `name` and a non-empty `host`.
+In normal `direct` mode and in `relay` `server` mode, Copperline requires at least one `[[server]]` entry. A relay `client` may omit `[[server]]` entirely because the IRC server/channel definitions live on the relay server. Every configured IRC server must have a unique non-empty `name` and a non-empty `host`.
 
 ## Complete example
 
@@ -42,6 +42,18 @@ input_history_limit = 10
 log_backlog_lines = 10
 reconnect_seconds = 10
 
+[relay]
+mode = "direct"
+# Server mode:
+# listen = "0.0.0.0:2222"
+# user = "copperline"
+# host_key = "~/.config/copperline/relay_host_ed25519"
+# authorized_keys = "~/.config/copperline/relay_authorized_keys"
+# Client mode:
+# address = "relay.example.com:2222"
+# private_key = "~/.config/copperline/relay_client_ed25519"
+# host_key_fingerprint = "SHA256:..."
+
 [keybindings]
 next_buffer = "Ctrl+N"
 previous_buffer = "Ctrl+P"
@@ -60,6 +72,7 @@ copy_mode = "Alt+L"
 follow_bottom = "End"
 clear_input = "Ctrl+U"
 quit = "Ctrl+C"
+relay_reconnect = "Alt+R"
 
 [theme]
 background = "#090d16"
@@ -252,7 +265,7 @@ logging = false
 
 When `logging = false`, Copperline does not create or append log files. Normal in-memory buffer history still works and is controlled separately by `history_lines`. Existing log files are left untouched.
 
-### Channel log backlog
+### Conversation log backlog
 
 When logging is enabled, Copperline uses the log as a small persistent backlog the first time you enter a channel during a session. By default it reads the final 10 meaningful lines that existed **before the current Copperline process began logging that buffer** and shows them in `theme.muted`. Any retained messages received during the current run are rendered normally underneath, even if they arrived hours before you first opened the channel. Switching away and back restores that same live transcript instead of reloading the log preview:
 
@@ -265,9 +278,36 @@ Legacy channel-housekeeping numerics (`315`, `324`, `329`, `332`, `333`, `353`, 
 
 These grey lines are display-only: Copperline does not insert them back into the in-memory message model, re-log them, count them as unread, or send them through Lua event hooks. Reading is performed from the end of the file, so a large channel log does not have to be loaded into memory just to obtain the tail.
 
-Set `log_backlog_lines = 0` to disable the persistent backlog and use only the normal in-memory buffer history. The feature applies to channel buffers; server-status buffers and private queries keep their normal live scrollback behavior.
+Set `log_backlog_lines = 0` to disable the persistent backlog and use only the normal in-memory buffer history. The feature applies to channel and private-query conversation buffers; server-status buffers keep their normal live scrollback behavior.
 
 `log_dir` is ignored while logging is disabled. Per-server and per-channel logging overrides are not currently supported.
+
+---
+
+# `[relay]`
+
+Selects how Copperline reaches IRC. The transport is implemented inside Copperline with `golang.org/x/crypto/ssh`; relay mode does not invoke the system `ssh` client or `sshd`.
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `mode` | string | `"direct"` | `direct`, `server`, or `client`. `direct` preserves normal local IRC connections. `server` runs a headless persistent IRC relay. `client` runs the local TUI against a Copperline relay over SSH. |
+| `listen` | string | `"127.0.0.1:2222"` | TCP listen address used only in relay-server mode. Set an externally reachable address explicitly when remote clients need to connect. |
+| `user` | string | `"copperline"` | SSH username accepted by the relay server and sent by the relay client. |
+| `host_key` | path | `~/.config/copperline/relay_host_ed25519` | Relay server Ed25519 host private key. Generated automatically if missing. |
+| `authorized_keys` | path | `~/.config/copperline/relay_authorized_keys` | Relay-specific public keys allowed to attach. The file is created if missing and re-read on every authentication attempt. |
+| `address` | string | none | Relay server address, such as `relay.example.com:2222`, required in client mode. |
+| `private_key` | path | `~/.config/copperline/relay_client_ed25519` | Relay-client private key. If absent, Copperline generates an Ed25519 keypair and writes a matching `.pub` file. |
+| `private_key_passphrase_env` | string | none | Environment variable containing the passphrase for an encrypted client private key. Copperline intentionally does not depend on `ssh-agent`. |
+| `host_key_fingerprint` | string | none | Expected `SHA256:...` fingerprint of the relay server host key. Required in client mode unless the insecure override is explicitly enabled. |
+| `insecure_skip_host_key_check` | bool | `false` | Accept any relay host key. Intended only for temporary testing; it disables SSH server identity verification. |
+
+Relay SSH authentication is public-key-only. The embedded endpoint accepts only Copperline's private relay SSH channel; it does not provide a shell, PTY, command execution, SFTP, or port forwarding.
+
+In relay-client mode the status bar includes a clickable `[⟳ RECONNECT (Alt+R)]` control. Its shortcut comes from `[keybindings].relay_reconnect`, so changing the TOML binding changes both keyboard behavior and the label shown in the UI. Force reconnect tears down only the local SSH attachment and creates a fresh one; the relay server keeps IRC connected.
+
+In server mode, normal `[[server]]` entries define the IRC networks kept alive by the relay. In client mode those entries can be omitted. The relay sends retained in-memory message history plus live IRC state to attached clients. `[general].history_lines` on the relay server bounds retained messages per buffer.
+
+See [`RELAY.md`](RELAY.md) for a complete server/client setup walkthrough, host fingerprint pairing, key generation, detach semantics, and DCC notes.
 
 ---
 
@@ -294,6 +334,7 @@ copy_mode = "Alt+L"
 follow_bottom = "End"
 clear_input = "Ctrl+U"
 quit = "Ctrl+C"
+relay_reconnect = "Alt+R"
 ```
 
 | Setting | Default | Action |
@@ -315,6 +356,7 @@ quit = "Ctrl+C"
 | `follow_bottom` | `End` | Return to/follow the newest transcript line. |
 | `clear_input` | `Ctrl+U` | Clear the input field. |
 | `quit` | `Ctrl+C` | Quit Copperline. |
+| `relay_reconnect` | `Alt+R` | Relay-client mode only: force the local Copperline SSH attachment to reconnect. The same action is clickable in the status bar. |
 
 Readable key names are accepted: `Ctrl+<letter>`, `Alt+<letter>` (or `Meta+<letter>`), `F1` through `F64`, `PageUp`, `PageDown`, `Up`, `Down`, `End`, `Tab`, and `Escape`. gotui-style event IDs such as `<M-n>` and `<C-p>` are also accepted. `Ctrl+` and `Alt+` bindings currently take a single character.
 
