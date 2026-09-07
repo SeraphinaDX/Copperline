@@ -212,6 +212,8 @@ func (p *serverPeer) handleRequest(req frame) {
 	m := p.server.irc
 
 	switch req.Action {
+	case "ping":
+		result = true
 	case "connect":
 		err = m.ConnectServer(req.Server)
 	case "disconnect":

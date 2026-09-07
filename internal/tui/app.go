@@ -57,12 +57,13 @@ type App struct {
 	relayReconnectDone chan relayReconnectResult
 	relayReconnecting  atomic.Bool
 
-	sidebar    *widgets.List
-	transcript *transcriptList
-	users      *widgets.List
-	topic      *widgets.Paragraph
-	input      *widgets.Input
-	status     *widgets.Paragraph
+	sidebar      *widgets.List
+	transcript   *transcriptList
+	users        *widgets.List
+	topic        *widgets.Paragraph
+	input        *widgets.Input
+	status       *widgets.Paragraph
+	relayControl *widgets.Paragraph
 
 	sidebarKeys           []string
 	userNicks             []string
@@ -243,7 +244,33 @@ func (a *App) relayReconnectLabel() string {
 	if a.relayReconnecting.Load() {
 		return "[⟳ RECONNECTING…]"
 	}
+	if !a.relayTransportConnected() {
+		return fmt.Sprintf("[⚠ RECONNECT (%s)]", a.cfg.Keybindings.RelayReconnect)
+	}
 	return fmt.Sprintf("[⟳ RECONNECT (%s)]", a.cfg.Keybindings.RelayReconnect)
+}
+
+// relayTransportConnected asks relay backends about the SSH attachment itself.
+// IRC connection state is deliberately separate: a relay can be perfectly
+// reachable while one IRC network is disconnected, and the inverse used to be
+// the dangerous case where a cached IRC snapshot made a dead SSH link look live.
+func (a *App) relayTransportConnected() bool {
+	if a.cfg == nil || a.cfg.Relay.ModeValue() != "client" {
+		return true
+	}
+	type transportHealth interface {
+		TransportConnected() bool
+	}
+	health, ok := a.irc.(transportHealth)
+	return !ok || health.TransportConnected()
+}
+
+func (a *App) relayReconnectControlWidth() int {
+	label := a.relayReconnectLabel()
+	if label == "" {
+		return 0
+	}
+	return len([]rune(label)) + 2
 }
 
 func (a *App) makeWidgets() {
@@ -278,6 +305,15 @@ func (a *App) makeWidgets() {
 	a.status.Border = false
 	a.status.WrapText = false
 	a.theme.applyStatus(a.status)
+
+	// Relay-client mode gets a dedicated reconnect control instead of hiding
+	// the action inside the ordinary status text. Temporary status messages,
+	// startup progress and long server/channel labels therefore cannot overwrite
+	// or clip the user's escape hatch when the SSH attachment is unhealthy.
+	a.relayControl = widgets.NewParagraph()
+	a.relayControl.Border = false
+	a.relayControl.WrapText = false
+	a.theme.applyStatus(a.relayControl)
 }
 
 func (a *App) newTranscriptList() *transcriptList {
@@ -593,6 +629,12 @@ func (a *App) inputDisplayState(b *model.BufferInfo) (title, placeholder string)
 	if b == nil {
 		return "Message", "Type a message or /help"
 	}
+	if a.cfg.Relay.ModeValue() == "client" && !a.relayTransportConnected() {
+		if a.relayReconnecting.Load() {
+			return "Relay reconnecting - please wait", "Your draft will be kept until the relay is available"
+		}
+		return "Relay disconnected", "Use " + a.cfg.Keybindings.RelayReconnect + " or click RECONNECT"
+	}
 	if !a.irc.IsConnected(b.Server) {
 		if a.irc.WantsConnection(b.Server) {
 			return "Connecting - please wait", "Waiting for " + b.Server + "..."
@@ -609,6 +651,12 @@ func (a *App) inputDisplayState(b *model.BufferInfo) (title, placeholder string)
 // draft in place makes an early keypress harmless instead of making the user
 // retype a message after startup finishes.
 func (a *App) chatWaitReason(server, target string) string {
+	if a.cfg.Relay.ModeValue() == "client" && !a.relayTransportConnected() {
+		if a.relayReconnecting.Load() {
+			return "Relay SSH connection is being re-established; message kept in input."
+		}
+		return "Relay SSH connection is unavailable; message kept in input. Use " + a.cfg.Keybindings.RelayReconnect + " or click RECONNECT."
+	}
 	if !a.irc.IsConnected(server) {
 		if a.irc.WantsConnection(server) {
 			return "Still connecting to " + server + "; message kept in input."
@@ -876,22 +924,47 @@ func (a *App) handleKey(e ui.Event) {
 	switch id {
 	case "<Enter>":
 		line := strings.TrimSpace(a.input.Text)
-		if line != "" && !strings.HasPrefix(line, "/") {
-			if b := a.state.CurrentInfo(); b != nil {
-				if reason := a.chatWaitReason(b.Server, b.Target); reason != "" {
-					a.local(b.Server, b.Target, model.KindSystem, reason)
-					return
-				}
+		if line == "" {
+			return
+		}
+
+		// Normal chat is safety-sensitive in relay mode. Do not erase the user's
+		// text until the backend has acknowledged the send request. Previously the
+		// input was cleared first, so a half-dead SSH attachment could silently eat
+		// a message while Copperline was still displaying cached IRC state.
+		if !strings.HasPrefix(line, "/") {
+			b := a.state.CurrentInfo()
+			if b == nil {
+				return
 			}
-		}
-		if line != "" {
+			if reason := a.chatWaitReason(b.Server, b.Target); reason != "" {
+				a.local(b.Server, b.Target, model.KindSystem, reason)
+				return
+			}
+
+			a.follow = true
+			a.scrollTranscriptBottom()
+			if err := a.irc.SendMessage(b.Server, b.Target, line); err != nil {
+				if a.cfg.Relay.ModeValue() == "client" {
+					a.local(b.Server, b.Target, model.KindError, "Relay send was not confirmed; message kept in input. Check whether it arrived before retrying: "+err.Error())
+				} else {
+					a.local(b.Server, b.Target, model.KindError, "Send failed; message kept in input: "+err.Error())
+				}
+				return
+			}
+
 			a.addInputHistory(line)
+			a.input.Text = ""
+			a.input.Cursor = 0
+			return
 		}
+
+		// Slash commands retain the established behavior. Commands have their own
+		// validation/error reporting and many intentionally mutate local UI state.
+		a.addInputHistory(line)
 		a.input.Text = ""
 		a.input.Cursor = 0
-		if line != "" {
-			a.execute(line)
-		}
+		a.execute(line)
 	case "<Backspace>", "<C-h>":
 		a.input.Backspace()
 	case "<Left>":
@@ -1236,17 +1309,17 @@ func (a *App) handleMouse(e ui.Event) {
 }
 
 func (a *App) mouseOverRelayReconnect(x, y int) bool {
-	label := a.relayReconnectLabel()
-	if label == "" {
+	buttonWidth := a.relayReconnectControlWidth()
+	if buttonWidth == 0 {
 		return false
 	}
 	w, h := ui.TerminalDimensions()
-	if y != h-1 || x < 1 || x >= w {
+	if y != h-1 || x < 0 || x >= w {
 		return false
 	}
-	// The relay button is intentionally the first status-bar item so the hit
-	// area is stable and derives from the exact configured-key label rendered.
-	return x <= len([]rune(label))+2
+	// The relay action owns a dedicated bottom-right region, independent of the
+	// ordinary status text, so temporary status modes cannot move its hit box.
+	return x >= w-buttonWidth
 }
 
 const (
@@ -1670,9 +1743,25 @@ func (a *App) render() {
 	a.topic.SetRect(left, 0, w-right, topicHeight)
 	a.transcript.SetRect(left, topicHeight, w-right, h-bottom)
 	a.input.SetRect(left, h-bottom, w, h-1)
-	a.status.SetRect(0, h-1, w, h)
+
+	relayWidth := a.relayReconnectControlWidth()
+	statusRight := w
+	if relayWidth > 0 {
+		// Leave at least one cell for the ordinary status region on unusually
+		// narrow terminals. render() already rejects widths below 40.
+		if relayWidth >= w {
+			relayWidth = w - 1
+		}
+		statusRight = w - relayWidth
+		a.relayControl.Text = " " + a.relayReconnectLabel() + " "
+		a.relayControl.SetRect(statusRight, h-1, w, h)
+	}
+	a.status.SetRect(0, h-1, statusRight, h)
 
 	items := []ui.Drawable{a.sidebar, a.topic, a.transcript, a.input, a.status}
+	if relayWidth > 0 {
+		items = append(items, a.relayControl)
+	}
 	if right > 0 {
 		a.users.SetRect(w-right, 0, w, h-bottom)
 		a.refreshUserRows(userListVisibleRows(h))
@@ -2014,7 +2103,7 @@ func (a *App) rebuildCurrent() {
 		return
 	}
 	if a.relayReconnecting.Load() {
-		a.status.Text = " " + a.relayReconnectLabel() + "  Re-establishing Copperline SSH relay connection - please wait "
+		a.status.Text = " Re-establishing Copperline SSH relay connection - please wait "
 		return
 	}
 	if loading, progress := a.startupLoading(); loading {
@@ -2031,12 +2120,8 @@ func (a *App) rebuildCurrent() {
 			phase)
 		return
 	}
-	relayPrefix := ""
-	if label := a.relayReconnectLabel(); label != "" {
-		relayPrefix = label + "  "
-	}
-	a.status.Text = fmt.Sprintf(" %s%s  %s%s  nick:%s  IRCv3:%d caps  DCC:%d  %s/%s buffers  %s/%s users  %s/%s history  %s jump  %s/%s scroll  /help ",
-		relayPrefix, b.Server, b.Target, joinState, nick, caps, offers,
+	a.status.Text = fmt.Sprintf(" %s  %s%s  nick:%s  IRCv3:%d caps  DCC:%d  %s/%s buffers  %s/%s users  %s/%s history  %s jump  %s/%s scroll  /help ",
+		b.Server, b.Target, joinState, nick, caps, offers,
 		a.cfg.Keybindings.NextBuffer, a.cfg.Keybindings.PreviousBuffer,
 		a.cfg.Keybindings.UserListDown, a.cfg.Keybindings.UserListUp,
 		a.cfg.Keybindings.HistoryPrevious, a.cfg.Keybindings.HistoryNext,

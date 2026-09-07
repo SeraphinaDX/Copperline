@@ -303,7 +303,7 @@ Selects how Copperline reaches IRC. The transport is implemented inside Copperli
 
 Relay SSH authentication is public-key-only. The embedded endpoint accepts only Copperline's private relay SSH channel; it does not provide a shell, PTY, command execution, SFTP, or port forwarding.
 
-In relay-client mode the status bar includes a clickable `[⟳ RECONNECT (Alt+R)]` control. Its shortcut comes from `[keybindings].relay_reconnect`, so changing the TOML binding changes both keyboard behavior and the label shown in the UI. Force reconnect tears down only the local SSH attachment and creates a fresh one; the relay server keeps IRC connected.
+In relay-client mode Copperline reserves a dedicated bottom-right control for `[⟳ RECONNECT (Alt+R)]` rather than embedding it in the ordinary status text. Its shortcut comes from `[keybindings].relay_reconnect`, so changing the TOML binding changes both keyboard behavior and the label shown in the UI. Force reconnect tears down only the local SSH attachment and creates a fresh one; the relay server keeps IRC connected. The client heartbeats the relay transport every five seconds and marks it disconnected if a relay request cannot be acknowledged within ten seconds. Normal chat text remains in the input until the send request is acknowledged.
 
 In server mode, normal `[[server]]` entries define the IRC networks kept alive by the relay. In client mode those entries can be omitted. The relay sends retained in-memory message history plus live IRC state to attached clients. `[general].history_lines` on the relay server bounds retained messages per buffer.
 
@@ -356,7 +356,7 @@ relay_reconnect = "Alt+R"
 | `follow_bottom` | `End` | Return to/follow the newest transcript line. |
 | `clear_input` | `Ctrl+U` | Clear the input field. |
 | `quit` | `Ctrl+C` | Quit Copperline. |
-| `relay_reconnect` | `Alt+R` | Relay-client mode only: force the local Copperline SSH attachment to reconnect. The same action is clickable in the status bar. |
+| `relay_reconnect` | `Alt+R` | Relay-client mode only: force the local Copperline SSH attachment to reconnect. The same action is always visible and clickable in the dedicated bottom-right relay control. |
 
 Readable key names are accepted: `Ctrl+<letter>`, `Alt+<letter>` (or `Meta+<letter>`), `F1` through `F64`, `PageUp`, `PageDown`, `Up`, `Down`, `End`, `Tab`, and `Escape`. gotui-style event IDs such as `<M-n>` and `<C-p>` are also accepted. `Ctrl+` and `Alt+` bindings currently take a single character.
 

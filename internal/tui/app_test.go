@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"copperline/internal/config"
+	ircclient "copperline/internal/irc"
 	"copperline/internal/logging"
 	"copperline/internal/model"
 
@@ -523,5 +525,60 @@ func TestResetUIAfterScriptReloadForcesCleanTranscriptWidget(t *testing.T) {
 	case <-app.redraw:
 	default:
 		t.Fatal("script reload did not request a redraw")
+	}
+}
+
+type failingSendBackend struct {
+	ircclient.Backend
+}
+
+func (f *failingSendBackend) IsConnected(string) bool      { return true }
+func (f *failingSendBackend) WantsConnection(string) bool  { return true }
+func (f *failingSendBackend) IsJoined(string, string) bool { return true }
+func (f *failingSendBackend) SendMessage(string, string, string) error {
+	return errors.New("relay unavailable")
+}
+func (f *failingSendBackend) SendTyping(string, string, string) (bool, error) {
+	return false, nil
+}
+
+func TestFailedChatSendKeepsInputText(t *testing.T) {
+	cfg := &config.Config{Relay: config.RelayConfig{Mode: "client"}}
+	state := model.New(100)
+	state.Select("testnet", "#chat")
+	input := widgets.NewInput()
+	input.Text = "do not lose me"
+	input.Cursor = len([]rune(input.Text))
+	app := &App{
+		cfg:          cfg,
+		state:        state,
+		irc:          &failingSendBackend{},
+		logger:       logging.New(false, "", "2006-01-02 15:04:05"),
+		redraw:       make(chan struct{}, 1),
+		input:        input,
+		transcript:   &transcriptList{List: widgets.NewList()},
+		inputHistory: make(map[string]*inputHistoryState),
+	}
+
+	app.handleKey(ui.Event{Type: ui.KeyboardEvent, ID: "<Enter>"})
+	if app.input.Text != "do not lose me" {
+		t.Fatalf("failed send cleared input: got %q", app.input.Text)
+	}
+}
+
+func TestRelayReconnectLabelAdvertisesConfiguredKey(t *testing.T) {
+	cfg := &config.Config{
+		Relay:       config.RelayConfig{Mode: "client"},
+		Keybindings: config.KeybindingsConfig{RelayReconnect: "Alt+R"},
+	}
+	app := &App{
+		cfg:            cfg,
+		relayReconnect: func() (ircclient.Backend, error) { return nil, nil },
+	}
+	if got, want := app.relayReconnectLabel(), "[⟳ RECONNECT (Alt+R)]"; got != want {
+		t.Fatalf("relay reconnect label = %q, want %q", got, want)
+	}
+	if got, want := app.relayReconnectControlWidth(), len([]rune("[⟳ RECONNECT (Alt+R)]"))+2; got != want {
+		t.Fatalf("relay reconnect control width = %d, want %d", got, want)
 	}
 }

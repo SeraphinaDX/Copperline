@@ -104,7 +104,7 @@ mode = "direct" # direct, server, or client
 
 A relay server still contains the normal `[[server]]` IRC definitions. A relay client may omit them entirely because it receives the server/channel state from the relay. See [`RELAY.md`](RELAY.md) for setup.
 
-Relay-client mode also exposes a clickable **⟳ RECONNECT** control in the status bar, with **Alt+R** as the default configurable shortcut (`[keybindings].relay_reconnect`). It reconnects only the SSH attachment, not the relay's IRC sessions.
+Relay-client mode also exposes a dedicated, always-visible **⟳ RECONNECT** control at the bottom-right of the TUI, with **Alt+R** as the default configurable shortcut (`[keybindings].relay_reconnect`). It reconnects only the SSH attachment, not the relay's IRC sessions. The relay client heartbeats the SSH transport every five seconds; a failed/timed-out relay request marks the attachment disconnected instead of continuing to display cached IRC state as healthy. Normal chat text is not cleared from the input until the relay acknowledges the send request.
 
 ### Fish shell passwords
 

@@ -15,7 +15,7 @@ import (
 	"copperline/internal/tui"
 )
 
-const version = "0.1.0"
+const version = "0.1.1"
 
 func main() {
 	configPath := flag.String("config", config.DefaultPath(), "path to Copperline TOML configuration")

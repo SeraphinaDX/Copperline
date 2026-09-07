@@ -118,7 +118,7 @@ Do not use that setting for a normal remote relay.
 
 ## Force reconnect from the TUI
 
-Relay-client mode adds a reconnect control to the bottom status bar:
+Relay-client mode adds a dedicated reconnect control to the bottom-right of the TUI. It is rendered separately from ordinary status text, so startup progress, jump mode, connection notices, or a long status line cannot overwrite it:
 
 ```text
 [⟳ RECONNECT (Alt+R)]
@@ -132,6 +132,12 @@ relay_reconnect = "Alt+R"
 ```
 
 Both paths call the same reconnect operation. Copperline closes only the local SSH attachment and opens a fresh connection to the relay; the relay process and its IRC network connections are left running. Retained relay history is de-duplicated on reattach, while messages received during the disconnected gap are still accepted.
+
+The relay client also sends a lightweight protocol heartbeat every five seconds. If a heartbeat or another relay request cannot be acknowledged within ten seconds, Copperline closes that SSH attachment and marks the relay unavailable instead of trusting the last cached IRC snapshot. The reconnect control changes to a warning form while the attachment is down.
+
+### Message safety during a relay failure
+
+For ordinary channel/query chat, Copperline does **not** clear the input field until the relay has acknowledged the send request. If the SSH attachment fails or times out, the exact text remains in the input and Copperline reports that delivery was not confirmed. Because a transport can fail after the relay receives a message but before its acknowledgement reaches the client, check the channel before manually retrying an unconfirmed message to avoid a duplicate.
 
 ## What stays on the relay server
 

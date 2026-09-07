@@ -19,6 +19,11 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+const (
+	relayRequestTimeout    = 10 * time.Second
+	relayHeartbeatInterval = 5 * time.Second
+)
+
 type Client struct {
 	cfg *config.Config
 
@@ -107,6 +112,7 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, err
 	}
 	go c.reader()
+	go c.heartbeat()
 	return c, nil
 }
 
@@ -230,6 +236,15 @@ func (c *Client) Start() {}
 // relay server's IRC sessions; that persistence is the purpose of relay mode.
 func (c *Client) Stop(reason string) { c.close() }
 
+// TransportConnected reports the health of the Copperline SSH attachment, not
+// the cached IRC state carried by the last relay snapshot. The TUI uses this to
+// avoid presenting a dead relay socket as a live IRC connection.
+func (c *Client) TransportConnected() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.connected
+}
+
 func (c *Client) close() {
 	c.closeOnce.Do(func() {
 		c.mu.Lock()
@@ -276,10 +291,13 @@ func (c *Client) call(action string, req frame) (frame, error) {
 		c.pendingMu.Lock()
 		delete(c.pending, id)
 		c.pendingMu.Unlock()
+		// A write failure means this SSH attachment cannot safely be reused.
+		// Closing it flips TransportConnected immediately and wakes the TUI.
+		c.close()
 		return frame{}, err
 	}
 
-	timer := time.NewTimer(20 * time.Second)
+	timer := time.NewTimer(relayRequestTimeout)
 	defer timer.Stop()
 	select {
 	case resp := <-waiter:
@@ -291,9 +309,29 @@ func (c *Client) call(action string, req frame) (frame, error) {
 		c.pendingMu.Lock()
 		delete(c.pending, id)
 		c.pendingMu.Unlock()
-		return frame{}, fmt.Errorf("relay request %s timed out", action)
+		// A relay request that cannot be acknowledged within the bounded timeout
+		// leaves delivery uncertain. Tear down the attachment instead of keeping
+		// stale cached IRC state marked as connected.
+		c.close()
+		return frame{}, fmt.Errorf("relay request %s timed out; SSH attachment closed", action)
 	case <-c.done:
 		return frame{}, errors.New("relay connection is closed")
+	}
+}
+
+func (c *Client) heartbeat() {
+	ticker := time.NewTicker(relayHeartbeatInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-c.done:
+			return
+		case <-ticker.C:
+			if _, err := c.call("ping", frame{}); err != nil {
+				c.close()
+				return
+			}
+		}
 	}
 }
 
