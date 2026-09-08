@@ -1,11 +1,17 @@
 package tui
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	logstore "copperline/internal/logging"
 	"copperline/internal/model"
+	"github.com/gdamore/tcell/v3"
+	ui "github.com/metaspartan/gotui/v5"
 )
 
 func TestChannelSwitchAcknowledgesActivity(t *testing.T) {
@@ -45,6 +51,63 @@ func TestChannelSwitchAcknowledgesActivity(t *testing.T) {
 			if a.state.CurrentInfo().Unread != 0 {
 				t.Fatal("live-follow message kept activity badge")
 			}
+		})
+	}
+}
+
+func TestChannelActivityVisibleOnFirstFrameWithoutTyping(t *testing.T) {
+	for _, logging := range []bool{false, true} {
+		t.Run(fmt.Sprintf("logging=%v", logging), func(t *testing.T) {
+			screen := tcell.NewSimulationScreen("UTF-8")
+			if err := screen.Init(); err != nil {
+				t.Fatal(err)
+			}
+			screen.SetSize(100, 24)
+			previous := ui.DefaultBackend
+			ui.DefaultBackend = &ui.Backend{Screen: screen}
+			t.Cleanup(func() { ui.DefaultBackend = previous; screen.Fini() })
+			a := newCatchupApp(t)
+			a.cfg.General.Logging = &logging
+			server := a.irc.ServerNames()[0]
+			// Seed genuine pre-session log context to exercise both cache paths.
+			if logging {
+				dir := filepath.Join(a.cfg.General.LogDir, server)
+				if err := os.MkdirAll(dir, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(dir, "#two.log"), []byte("12:00 <old> persisted context\n"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			a.logger = logstore.New(logging, a.cfg.General.LogDir, a.cfg.General.Timestamp)
+			a.state = model.New(100)
+			a.state.Select(server, "*server*")
+			a.render()
+			for i := 0; i < 30; i++ {
+				addCatchupMessages(a, server, "#two", fmt.Sprintf("message %02d", i))
+			}
+			assertVisible := func(want string) {
+				cells, width, _ := screen.GetContents()
+				var visible strings.Builder
+				for i, cell := range cells {
+					visible.WriteString(string(cell.Runes))
+					if (i+1)%width == 0 {
+						visible.WriteByte('\n')
+					}
+				}
+				if !strings.Contains(visible.String(), want) {
+					t.Fatalf("%q missing on first frame:\n%s", want, visible.String())
+				}
+			}
+			a.selectBufferNumber(2)
+			a.render() // Exactly one frame after switching; no typed key or send.
+			assertVisible("message 29")
+			a.selectBufferNumber(1)
+			a.render()
+			addCatchupMessages(a, server, "#two", "activity while away")
+			a.selectBufferNumber(2)
+			a.render()
+			assertVisible("activity while away")
 		})
 	}
 }
