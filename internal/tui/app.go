@@ -53,6 +53,7 @@ type App struct {
 	relayReconnect     func() (ircclient.Backend, error)
 	relayReconnectDone chan relayReconnectResult
 	relayReconnecting  atomic.Bool
+	typingInFlight     atomic.Bool
 
 	sidebar      *widgets.List
 	transcript   *transcriptList
@@ -719,7 +720,7 @@ func (a *App) syncOutgoingTyping() {
 	// expire our previous active indication after six seconds.
 	if server != a.typingServer || target != a.typingTarget {
 		if a.typingServer != "" && a.typingTarget != "" && a.typingSentState != "" && a.typingSentState != "done" {
-			_, _ = a.irc.SendTyping(a.typingServer, a.typingTarget, "done")
+			a.queueTyping(a.typingServer, a.typingTarget, "done")
 		}
 		a.typingServer = server
 		a.typingTarget = target
@@ -755,14 +756,30 @@ func (a *App) syncOutgoingTyping() {
 		return
 	}
 
-	sent, err := a.irc.SendTyping(server, target, desired)
-	if err != nil || !sent {
-		// Connection loss and throttle suppression are both transient. The UI
-		// ticker will retry without polluting the conversation with errors.
+	if !a.queueTyping(server, target, desired) {
 		return
 	}
 	a.typingSentState = desired
 	a.typingLastSent = now
+}
+
+// Typing is advisory. Keep at most one request in flight and drop intermediate
+// states instead of making keystrokes wait for a relay response. Active states
+// refresh periodically; paused/done indicators also expire at the receiver.
+func (a *App) queueTyping(server, target, state string) bool {
+	if !a.cfg.General.SendTypingEnabled() || a.relayReconnecting.Load() ||
+		!a.relayTransportConnected() || !a.irc.IsConnected(server) {
+		return false
+	}
+	if !a.typingInFlight.CompareAndSwap(false, true) {
+		return false
+	}
+	backend := a.irc
+	go func() {
+		defer a.typingInFlight.Store(false)
+		_, _ = backend.SendTyping(server, target, state)
+	}()
+	return true
 }
 
 func typingInputTitle(nicks []string) string {

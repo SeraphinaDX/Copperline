@@ -169,6 +169,12 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## Fixed in 0.2.3
+
+A sleeping or stalled relay client can no longer block shared IRC broadcasts while its SSH channel is being closed. Slow attachments are removed immediately, with socket cleanup in the background and a timeout on outgoing channel writes. Other attached machines remain independent of that cleanup. Typing notifications now run outside the keyboard handler, with at most one in flight, so an unresponsive relay cannot freeze draft editing through typing updates.
+
+Update and restart the relay server to apply the attachment isolation fix; update desktop/laptop clients for responsive typing. Relay protocol remains 2.
+
 ## Fixed in 0.2.2
 
 Reconnect readiness now waits for IRC registration. Chat, `/msg`, `/me`, and `/notice` retain their input if a send cannot be confirmed. A unique IRC PING/PONG checks that the server read past the text before reporting success; it does not guarantee recipient delivery or override channel permissions. If confirmation is lost, check the channel before retrying to avoid duplicates. Messages are not automatically resent.

@@ -8,7 +8,6 @@ import (
 	"io"
 	"log"
 	"net"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -48,6 +47,7 @@ type serverPeer struct {
 	notifications bool
 	server        *Server
 	ch            ssh.Channel
+	transport     net.Conn
 	enc           *json.Encoder
 	dec           *json.Decoder
 	sendQ         chan frame
@@ -172,7 +172,7 @@ func (s *Server) serveConn(conn net.Conn) {
 		}
 		go ssh.DiscardRequests(requests)
 		peer := &serverPeer{
-			server: s, ch: ch, enc: json.NewEncoder(ch), dec: json.NewDecoder(ch),
+			server: s, ch: ch, transport: conn, enc: json.NewEncoder(ch), dec: json.NewDecoder(ch),
 			sendQ: make(chan frame, 256), closed: make(chan struct{}),
 		}
 		go peer.writer()
@@ -288,13 +288,18 @@ func (p *serverPeer) send(f frame) error {
 	select {
 	case <-p.closed:
 		return io.ErrClosedPipe
+	default:
+	}
+	select {
+	case <-p.closed:
+		return io.ErrClosedPipe
 	case p.sendQ <- f:
 		return nil
 	default:
 		// A relay client that cannot consume a bounded queue must not stall IRC
 		// processing for every other attached client. Drop the attachment; it can
 		// reconnect and receive retained history again.
-		go p.close()
+		p.close()
 		return errors.New("relay client is too slow")
 	}
 }
@@ -305,7 +310,8 @@ func (p *serverPeer) writer() {
 		case <-p.closed:
 			return
 		case f := <-p.sendQ:
-			if err := p.enc.Encode(f); err != nil {
+			err := p.writeFrame(f, relayRequestTimeout)
+			if err != nil {
 				p.close()
 				return
 			}
@@ -313,11 +319,29 @@ func (p *serverPeer) writer() {
 	}
 }
 
+func (p *serverPeer) writeFrame(f frame, timeout time.Duration) error {
+	// A sleeping peer may stop advancing its SSH receive window even before
+	// the queue fills. Closing its socket also releases a blocked channel write.
+	timer := time.AfterFunc(timeout, p.close)
+	defer timer.Stop()
+	return p.enc.Encode(f)
+}
+
 func (p *serverPeer) close() {
 	p.closeOnce.Do(func() {
 		close(p.closed)
 		p.server.removePeer(p)
-		_ = p.ch.Close()
+		// Channel.Close writes an SSH packet and may block on a sleeping
+		// machine. Never do transport cleanup inside broadcast or sync.Once:
+		// another caller of close would wait there and stall all IRC clients.
+		go func() {
+			if p.transport != nil {
+				_ = p.transport.Close()
+			}
+			if p.ch != nil {
+				_ = p.ch.Close()
+			}
+		}()
 	})
 }
 
@@ -437,8 +461,6 @@ func (s *Server) broadcast(f frame) {
 	}
 	s.peersMu.Unlock()
 	for _, p := range peers {
-		if err := p.send(f); err != nil && !strings.Contains(strings.ToLower(err.Error()), "closed") {
-			p.close()
-		}
+		_ = p.send(f) // send detaches slow peers without waiting for SSH cleanup.
 	}
 }
