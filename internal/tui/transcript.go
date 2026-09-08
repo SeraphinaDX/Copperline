@@ -22,6 +22,10 @@ import (
 // wrapped line is always visible at the bottom of the transcript.
 type transcriptList struct {
 	*widgets.List
+	unread       bool
+	unreadBefore int
+	searchQuery  string
+	searchMinRow int
 }
 
 type transcriptPhysicalLine struct {
@@ -159,6 +163,18 @@ func (t *transcriptList) visiblePhysicalLines() ([]transcriptPhysicalLine, bool,
 
 func (t *transcriptList) wrapLogicalRow(row, width int) [][]ui.Cell {
 	cells := parseTranscriptStyles(t.Rows[row], t.TextStyle)
+	if t.searchQuery != "" && row >= t.searchMinRow {
+		text := make([]rune, len(cells))
+		for i, cell := range cells {
+			text[i] = cell.Rune
+		}
+		for _, span := range searchRanges(text, t.searchQuery) {
+			for i := span[0]; i < span[1]; i++ {
+				cells[i].Style.Bg = ui.ColorYellow
+				cells[i].Style.Fg = ui.ColorBlack
+			}
+		}
+	}
 
 	// Preserve List's selected-row styling semantics. Copperline normally sets
 	// SelectedStyle == TextStyle for transcripts, but keeping this behavior here
@@ -175,6 +191,10 @@ func (t *transcriptList) wrapLogicalRow(row, width int) [][]ui.Cell {
 		cells = ui.WrapCells(cells, uint(width))
 	}
 	lines := ui.SplitCells(cells, '\n')
+	if t.unread && row == t.unreadBefore {
+		divider := ui.RunesToStyledCells([]rune("── New messages below ──"), ui.NewStyle(ui.ColorYellow))
+		lines = append([][]ui.Cell{ui.TrimCells(divider, width)}, lines...)
+	}
 	if len(lines) == 0 {
 		// An empty logical row still occupies one terminal line.
 		return [][]ui.Cell{{}}

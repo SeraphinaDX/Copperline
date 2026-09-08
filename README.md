@@ -169,6 +169,16 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## New in 0.2.0
+
+- Relay-side Gotify alerts for mentions and private messages while no clients are attached; one eligible attached client owns live alerts to avoid duplicates.
+- `/search text` searches retained messages in the current buffer, with literal, case-insensitive highlighting. `F3` / `F4` or `/searchnext` / `/searchprev` move between matching messages and wrap around. `/search` with no text clears the search.
+- `Alt+A` or `/unread` jumps to the next unread buffer. Conversations open at the first retained unread message with a **New messages below** divider. Selecting a buffer does not clear its unread count; reaching the bottom with downward scrolling, pressing `End`, or using `/markread` acknowledges it.
+- Optional `[relay].history_file` restores bounded structured replay history after a relay restart. Stable message IDs distinguish identical messages and deduplicate reconnect replay.
+- Smaller TUI source files for commands, keyboard, mouse, navigation, rendering, reconnect, search, and catch-up behavior.
+
+**Upgrade relay servers and clients together:** this release uses relay protocol 2. Search covers retained messages, not older disk logs. Read positions are currently local to each running client; persisting and synchronizing them is a future increment.
+
 ## Requirements
 
 Copperline requires **Go 1.26 or newer**. Relay mode uses the September 2026 SSH security fixes in `golang.org/x/crypto v0.56.0`.
@@ -368,6 +378,8 @@ All action bindings are configurable under `[keybindings]`. Default controls inc
 
 - `Ctrl-N`: next buffer
 - `Ctrl-P`: previous buffer
+- `Alt-A`: next unread buffer
+- `F3` / `F4`: next / previous search match
 - `Alt-N`: scroll the right-hand user list down
 - `Alt-P`: scroll the right-hand user list up
 - `F6`, number, `Enter`: jump directly to a numbered buffer
@@ -426,6 +438,10 @@ Press `Alt-L` for bare/copy mode. Copperline temporarily hides the normal UI chr
 /whois nick
 /raw IRC COMMAND HERE
 /history [count]
+/search [text]
+/searchnext
+/searchprev
+/unread
 /markread
 /caps
 /dcc list

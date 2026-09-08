@@ -6,12 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"copperline/internal/config"
+	"copperline/internal/gotify"
 	ircclient "copperline/internal/irc"
 	"copperline/internal/logging"
 	"copperline/internal/model"
@@ -30,21 +33,26 @@ type Server struct {
 	listener net.Listener
 	peersMu  sync.Mutex
 	peers    map[*serverPeer]struct{}
+	nextPeer uint64
+	notifier *gotify.Notifier
 
 	// syncMu makes initial history attachment atomic with live-message delivery.
 	syncMu sync.Mutex
 
 	snapshotWake chan struct{}
+	historyDirty atomic.Bool
 }
 
 type serverPeer struct {
-	server    *Server
-	ch        ssh.Channel
-	enc       *json.Encoder
-	dec       *json.Decoder
-	sendQ     chan frame
-	closed    chan struct{}
-	closeOnce sync.Once
+	order         uint64
+	notifications bool
+	server        *Server
+	ch            ssh.Channel
+	enc           *json.Encoder
+	dec           *json.Decoder
+	sendQ         chan frame
+	closed        chan struct{}
+	closeOnce     sync.Once
 }
 
 func NewServer(cfg *config.Config) (*Server, error) {
@@ -87,6 +95,10 @@ func NewServer(cfg *config.Config) (*Server, error) {
 		snapshotWake: make(chan struct{}, 1),
 	}
 	s.irc = ircclient.New(cfg, nil)
+	if err := s.restoreHistory(); err != nil {
+		return nil, fmt.Errorf("relay history: %w", err)
+	}
+	s.notifier = gotify.New(cfg.Gotify)
 	s.irc.SetMessageSink(s.onMessage)
 	s.irc.SetEventSink(s.onEvent)
 	s.irc.SetUpdateSink(s.requestSnapshot)
@@ -103,7 +115,17 @@ func (s *Server) Run(ctx context.Context) error {
 	s.listener = ln
 
 	s.irc.Start()
-	defer s.irc.Stop("Copperline relay stopping")
+	historyCtx, stopHistory := context.WithCancel(context.Background())
+	historyDone := make(chan struct{})
+	go func() { defer close(historyDone); s.historyLoop(historyCtx) }()
+	defer func() {
+		s.irc.Stop("Copperline relay stopping")
+		stopHistory()
+		<-historyDone
+		if err := s.saveHistory(); err != nil {
+			log.Printf("save relay history: %v", err)
+		}
+	}()
 	defer ln.Close()
 
 	go s.snapshotLoop(ctx)
@@ -166,6 +188,7 @@ func (p *serverPeer) serve() {
 		_ = p.send(frame{Type: "error", Error: fmt.Sprintf("Copperline relay protocol %d required", protocolVersion)})
 		return
 	}
+	p.notifications = hello.Bool
 	if err := p.send(frame{Type: "hello", Version: protocolVersion}); err != nil {
 		return
 	}
@@ -300,8 +323,10 @@ func (p *serverPeer) close() {
 
 func (s *Server) onMessage(msg model.Message) {
 	s.syncMu.Lock()
+	msg.RelayID = newMessageID()
 	s.state.Add(msg)
-	s.broadcast(frame{Type: "message", Message: &msg})
+	s.historyDirty.Store(true)
+	s.deliverMessage(msg, s.irc.CurrentNick(msg.Server))
 	s.syncMu.Unlock()
 
 	// Disk logging is not part of the relay delivery critical section. A slow
@@ -380,6 +405,8 @@ func (s *Server) replayMessages() []model.Message {
 
 func (s *Server) addPeer(p *serverPeer) {
 	s.peersMu.Lock()
+	s.nextPeer++
+	p.order = s.nextPeer
 	s.peers[p] = struct{}{}
 	s.peersMu.Unlock()
 }
