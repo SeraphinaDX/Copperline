@@ -582,3 +582,72 @@ func TestRelayReconnectLabelAdvertisesConfiguredKey(t *testing.T) {
 		t.Fatalf("relay reconnect control width = %d, want %d", got, want)
 	}
 }
+
+type knownTargetsBackend struct {
+	ircclient.Backend
+	servers map[string][]string
+}
+
+func (b *knownTargetsBackend) ServerNames() []string {
+	out := make([]string, 0, len(b.servers))
+	for server := range b.servers {
+		out = append(out, server)
+	}
+	return out
+}
+func (b *knownTargetsBackend) KnownTargets(server string) []string {
+	return append([]string(nil), b.servers[server]...)
+}
+func (b *knownTargetsBackend) CurrentNick(string) string { return "britney" }
+
+func TestClosedBufferIsNotResurrectedByBackendSnapshot(t *testing.T) {
+	state := model.New(100)
+	state.Ensure("testnet", "*server*")
+	state.Select("testnet", "#later")
+	backend := &knownTargetsBackend{servers: map[string][]string{"testnet": {"#later"}}}
+	app := &App{
+		state:         state,
+		irc:           backend,
+		closedBuffers: make(map[string]bool),
+		redraw:        make(chan struct{}, 1),
+	}
+
+	app.closeBufferLocally("testnet", "#later")
+	state.Close("testnet", "#later")
+	app.onBackendUpdate()
+
+	if got := state.Find("testnet", "#later"); got != nil {
+		t.Fatalf("backend snapshot resurrected closed channel: %#v", got)
+	}
+}
+
+func TestLiveMessageReopensLocallyClosedBuffer(t *testing.T) {
+	state := model.New(100)
+	state.Ensure("testnet", "*server*")
+	backend := &knownTargetsBackend{servers: map[string][]string{"testnet": {"#later"}}}
+	app := &App{
+		cfg:           &config.Config{},
+		state:         state,
+		irc:           backend,
+		logger:        logging.New(false, "", "2006-01-02 15:04:05"),
+		closedBuffers: make(map[string]bool),
+		redraw:        make(chan struct{}, 1),
+	}
+
+	app.closeBufferLocally("testnet", "#later")
+	app.onMessage(model.Message{
+		Time:   time.Now(),
+		Server: "testnet",
+		Target: "#later",
+		Nick:   "alice",
+		Text:   "new traffic",
+		Kind:   model.KindMessage,
+	})
+
+	if app.isBufferClosed("testnet", "#later") {
+		t.Fatal("live message did not clear local closed-buffer tombstone")
+	}
+	if got := state.Find("testnet", "#later"); got == nil || len(got.Messages) != 1 || got.Messages[0].Text != "new traffic" {
+		t.Fatalf("live message did not reopen channel correctly: %#v", got)
+	}
+}

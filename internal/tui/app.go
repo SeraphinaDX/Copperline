@@ -104,6 +104,9 @@ type App struct {
 	connectionSeen   map[string]bool
 	reconnectPending map[string]bool
 
+	closedBuffersMu sync.RWMutex
+	closedBuffers   map[string]bool
+
 	startupComplete     atomic.Bool
 	startupLastActivity atomic.Int64
 }
@@ -129,6 +132,7 @@ func NewWithBackend(cfg *config.Config, backend ircclient.Backend) *App {
 		inputHistory:       make(map[string]*inputHistoryState),
 		connectionSeen:     make(map[string]bool),
 		reconnectPending:   make(map[string]bool),
+		closedBuffers:      make(map[string]bool),
 	}
 	for _, s := range cfg.Servers {
 		a.state.Ensure(s.Name, "*server*")
@@ -393,6 +397,37 @@ func (a *App) Run() error {
 	return nil
 }
 
+func (a *App) isBufferClosed(server, target string) bool {
+	if target == "" || target == "*server*" {
+		return false
+	}
+	a.closedBuffersMu.RLock()
+	closed := a.closedBuffers[model.Key(server, target)]
+	a.closedBuffersMu.RUnlock()
+	return closed
+}
+
+func (a *App) closeBufferLocally(server, target string) {
+	if target == "" || target == "*server*" {
+		return
+	}
+	a.closedBuffersMu.Lock()
+	if a.closedBuffers == nil {
+		a.closedBuffers = make(map[string]bool)
+	}
+	a.closedBuffers[model.Key(server, target)] = true
+	a.closedBuffersMu.Unlock()
+}
+
+func (a *App) reopenBuffer(server, target string) {
+	if target == "" || target == "*server*" {
+		return
+	}
+	a.closedBuffersMu.Lock()
+	delete(a.closedBuffers, model.Key(server, target))
+	a.closedBuffersMu.Unlock()
+}
+
 func (a *App) onMessage(msg model.Message) {
 	// Mentions are detected only for incoming chat/action messages. In
 	// particular, we never inspect the input widget, and an echoed copy of
@@ -405,6 +440,12 @@ func (a *App) onMessage(msg model.Message) {
 		}
 	}
 	if msg.Replay {
+		// A locally closed buffer must not be resurrected merely because a relay
+		// attachment replays retained history for every known target. Live traffic
+		// below is allowed to reopen it so genuinely new conversation is visible.
+		if a.isBufferClosed(msg.Server, msg.Target) {
+			return
+		}
 		// Relay-retained history is already persisted/announced by the relay
 		// server. Display it as normal conversation text without generating
 		// duplicate local logs, notifications, or Lua callbacks on each attach.
@@ -417,6 +458,10 @@ func (a *App) onMessage(msg model.Message) {
 		}
 		return
 	}
+	// Genuine new traffic reopens a locally hidden conversation. Routine relay
+	// snapshots and replay history do not.
+	a.reopenBuffer(msg.Server, msg.Target)
+
 	// Establish the persistent-log boundary before this message becomes visible
 	// to the UI. For dynamically joined channels, the first redraw can otherwise
 	// race the first log write and classify current-session traffic as muted
@@ -520,6 +565,9 @@ func (a *App) onBackendUpdate() {
 	for _, server := range a.irc.ServerNames() {
 		a.state.Ensure(server, "*server*")
 		for _, target := range a.irc.KnownTargets(server) {
+			if a.isBufferClosed(server, target) {
+				continue
+			}
 			a.state.Ensure(server, target)
 		}
 	}
@@ -2243,6 +2291,7 @@ func (a *App) execute(line string) {
 			return
 		}
 		key, _ := cutWord(tail)
+		a.reopenBuffer(b.Server, arg1)
 		a.state.Ensure(b.Server, arg1)
 		a.state.Select(b.Server, arg1)
 		a.local(b.Server, arg1, model.KindSystem, "joining "+arg1+"...")
@@ -2265,6 +2314,7 @@ func (a *App) execute(line string) {
 		}
 	case "query", "q":
 		if arg1 != "" {
+			a.reopenBuffer(b.Server, arg1)
 			a.state.Select(b.Server, arg1)
 			a.follow = true
 		}
@@ -2273,6 +2323,7 @@ func (a *App) execute(line string) {
 			a.local(b.Server, b.Target, model.KindError, "usage: /msg nick message")
 			return
 		}
+		a.reopenBuffer(b.Server, arg1)
 		a.state.Ensure(b.Server, arg1)
 		if err := a.irc.SendMessage(b.Server, arg1, strings.TrimSpace(tail)); err != nil {
 			a.local(b.Server, arg1, model.KindError, err.Error())
@@ -2352,6 +2403,7 @@ func (a *App) execute(line string) {
 		a.executeLua(b, arg1, tail)
 	case "close":
 		if b.Target != "*server*" {
+			a.closeBufferLocally(b.Server, b.Target)
 			delete(a.transcriptCaches, model.Key(b.Server, b.Target))
 			a.state.Close(b.Server, b.Target)
 		}
