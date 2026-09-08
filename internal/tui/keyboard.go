@@ -265,8 +265,20 @@ func (a *App) handleKey(e ui.Event) {
 			return
 		}
 
-		// Slash commands retain the established behavior. Commands have their own
-		// validation/error reporting and many intentionally mutate local UI state.
+		if handled, err := a.sendTextCommand(line); handled {
+			if err != nil {
+				if b := a.state.CurrentInfo(); b != nil {
+					a.local(b.Server, b.Target, model.KindError, "Send was not confirmed; command kept in input. Check before retrying: "+err.Error())
+				}
+				return
+			}
+			a.addInputHistory(line)
+			a.input.Text = ""
+			a.input.Cursor = 0
+			return
+		}
+
+		// Other commands may intentionally mutate local UI state.
 		a.addInputHistory(line)
 		a.input.Text = ""
 		a.input.Cursor = 0
