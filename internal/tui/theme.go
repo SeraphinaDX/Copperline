@@ -138,10 +138,11 @@ func (t uiTheme) nickColor(nick string) string {
 // formatLogBacklog renders persisted context in the existing muted theme
 // color so it is visually distinct from live IRC traffic.
 func (t uiTheme) formatLogBacklog(line string) string {
-	return transcriptStyled(line, t.cfg.Muted)
+	return transcriptStyled(model.PlainText(line), t.cfg.Muted)
 }
 
 func (t uiTheme) formatMessage(m model.Message, layout string) string {
+	m.Text = model.PlainText(m.Text)
 	stamp := transcriptStyled(m.Time.Local().Format(layout), t.cfg.Timestamp)
 	if m.Mention && (m.Kind == model.KindMessage || m.Kind == model.KindAction) {
 		marker := transcriptStyled("!", t.cfg.Mention)

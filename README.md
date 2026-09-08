@@ -169,11 +169,15 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## Fixed in 0.2.1
+
+Channel selection once again clears activity indicators and follows the newest messages. IRC formatting controls and their color parameters no longer appear as stray digits in messages or restored log previews. Relay protocol remains 2.
+
 ## New in 0.2.0
 
 - Relay-side Gotify alerts for mentions and private messages while no clients are attached; one eligible attached client owns live alerts to avoid duplicates.
 - `/search text` searches retained messages in the current buffer, with literal, case-insensitive highlighting. `F3` / `F4` or `/searchnext` / `/searchprev` move between matching messages and wrap around. `/search` with no text clears the search.
-- `Alt+A` or `/unread` jumps to the next unread buffer. Conversations open at the first retained unread message with a **New messages below** divider. Selecting a buffer does not clear its unread count; reaching the bottom with downward scrolling, pressing `End`, or using `/markread` acknowledges it.
+- `Alt+A` or `/unread` jumps to the next unread buffer. Selecting a buffer clears its activity indicator and resumes following the newest messages. Messages arriving while you scroll back remain unread, with a **New messages below** divider; `End` or `/markread` acknowledges them.
 - Optional `[relay].history_file` restores bounded structured replay history after a relay restart. Stable message IDs distinguish identical messages and deduplicate reconnect replay.
 - Smaller TUI source files for commands, keyboard, mouse, navigation, rendering, reconnect, search, and catch-up behavior.
 

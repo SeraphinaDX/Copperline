@@ -146,12 +146,15 @@ func (s *State) Add(msg Message) {
 func (s *State) Select(server, target string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.ensureLocked(server, target)
+	b := s.ensureLocked(server, target)
+	b.Unread = 0
+	b.ReadTotal = b.Total
 	s.CurrentKey = Key(server, target)
 }
 
 // MarkReadThrough acknowledges only the displayed snapshot, leaving messages
-// that arrived concurrently unread. Selecting a buffer alone is not a read.
+// that arrived concurrently unread. Buffer selection separately acknowledges
+// existing activity.
 func (s *State) MarkReadThrough(server, target string, total uint64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -175,6 +178,8 @@ func (s *State) SelectKey(key string) bool {
 		return false
 	}
 	s.CurrentKey = key
+	s.Buffers[key].Unread = 0
+	s.Buffers[key].ReadTotal = s.Buffers[key].Total
 	return true
 }
 

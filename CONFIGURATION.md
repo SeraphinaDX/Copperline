@@ -374,7 +374,7 @@ Copperline validates this section when it starts. Unsupported names produce a co
 
 Use `/search text` for a literal, case-insensitive search of retained messages in the current buffer. Matching text is highlighted, and the transcript title shows the matching-message position or no-results feedback. `/search` with no text clears it; switching buffers also clears the search. Older disk-log previews are excluded.
 
-Selecting an unread buffer opens at its first retained unread message without acknowledging the rest. The divider and count remain until you resume following the bottom or explicitly `/markread`. Messages arriving while scrolled up stay unread. Local read positions are session-only and are not synchronized between relay clients.
+Selecting a buffer clears its activity indicator and resumes following the newest messages. Messages arriving while scrolled up stay unread; the divider and count remain until you resume following the bottom or explicitly `/markread`. Local read positions are session-only and are not synchronized between relay clients.
 
 Input history is session-only and per-buffer. By default Copperline keeps 10 entries per buffer; change `[general].input_history_limit` to choose another limit, or set it to `0` to disable input history. Both messages and slash commands are recorded, consecutive duplicates are collapsed, and a draft present before the first `history_previous` action is restored when `history_next` moves past the newest entry. To make Up/Down available for history, the default single-line transcript bindings are now `Alt+K`/`Alt+J`. Older configs containing the previous explicit `Up`/`Down` transcript defaults are migrated automatically.
 
