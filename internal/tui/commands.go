@@ -29,6 +29,13 @@ func (a *App) execute(line string) {
 		return
 	}
 
+	if handled, err := a.sendTextCommand(line); handled {
+		if err != nil {
+			a.local(b.Server, b.Target, model.KindError, err.Error())
+		}
+		return
+	}
+
 	cmdline := strings.TrimSpace(strings.TrimPrefix(line, "/"))
 	cmd, rest := cutWord(cmdline)
 	cmd = strings.ToLower(cmd)
@@ -109,28 +116,6 @@ func (a *App) execute(line string) {
 			a.reopenBuffer(b.Server, arg1)
 			a.state.Select(b.Server, arg1)
 			a.follow = true
-		}
-	case "msg":
-		if arg1 == "" || strings.TrimSpace(tail) == "" {
-			a.local(b.Server, b.Target, model.KindError, "usage: /msg nick message")
-			return
-		}
-		a.reopenBuffer(b.Server, arg1)
-		a.state.Ensure(b.Server, arg1)
-		if err := a.irc.SendMessage(b.Server, arg1, strings.TrimSpace(tail)); err != nil {
-			a.local(b.Server, arg1, model.KindError, err.Error())
-		}
-	case "me":
-		if err := a.irc.SendAction(b.Server, b.Target, rest); err != nil {
-			a.local(b.Server, b.Target, model.KindError, err.Error())
-		}
-	case "notice":
-		if arg1 == "" || strings.TrimSpace(tail) == "" {
-			a.local(b.Server, b.Target, model.KindError, "usage: /notice target message")
-			return
-		}
-		if err := a.irc.Notice(b.Server, arg1, strings.TrimSpace(tail)); err != nil {
-			a.local(b.Server, b.Target, model.KindError, err.Error())
 		}
 	case "ctcp":
 		ctcpCommand, ctcpText := cutWord(tail)
@@ -333,5 +318,36 @@ func (a *App) executeDCC(b *model.Buffer, sub, rest string) {
 		}
 	default:
 		a.local(b.Server, b.Target, model.KindDCC, "usage: /dcc list | /dcc accept nick | /dcc send nick path")
+	}
+}
+
+// sendTextCommand is shared by interactive input and scripts. Interactive
+// callers retain the complete command when delivery cannot be confirmed.
+func (a *App) sendTextCommand(line string) (bool, error) {
+	cmd, rest := cutWord(strings.TrimSpace(strings.TrimPrefix(line, "/")))
+	cmd = strings.ToLower(cmd)
+	if cmd != "msg" && cmd != "me" && cmd != "notice" {
+		return false, nil
+	}
+	b := a.state.CurrentInfo()
+	if b == nil {
+		return true, fmt.Errorf("select a channel or query first")
+	}
+	arg, tail := cutWord(rest)
+	switch cmd {
+	case "msg":
+		if arg == "" || strings.TrimSpace(tail) == "" {
+			return true, fmt.Errorf("usage: /msg nick message")
+		}
+		a.reopenBuffer(b.Server, arg)
+		a.state.Ensure(b.Server, arg)
+		return true, a.irc.SendMessage(b.Server, arg, strings.TrimSpace(tail))
+	case "me":
+		return true, a.irc.SendAction(b.Server, b.Target, rest)
+	default:
+		if arg == "" || strings.TrimSpace(tail) == "" {
+			return true, fmt.Errorf("usage: /notice target message")
+		}
+		return true, a.irc.Notice(b.Server, arg, strings.TrimSpace(tail))
 	}
 }

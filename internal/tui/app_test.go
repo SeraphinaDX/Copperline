@@ -538,32 +538,43 @@ func (f *failingSendBackend) IsJoined(string, string) bool { return true }
 func (f *failingSendBackend) SendMessage(string, string, string) error {
 	return errors.New("relay unavailable")
 }
+func (f *failingSendBackend) SendAction(string, string, string) error {
+	return errors.New("relay unavailable")
+}
+func (f *failingSendBackend) Notice(string, string, string) error {
+	return errors.New("relay unavailable")
+}
 func (f *failingSendBackend) SendTyping(string, string, string) (bool, error) {
 	return false, nil
 }
 
 func TestFailedChatSendKeepsInputText(t *testing.T) {
-	cfg := &config.Config{Relay: config.RelayConfig{Mode: "client"}}
-	state := model.New(100)
-	state.Select("testnet", "#chat")
-	input := widgets.NewInput()
-	input.Text = "do not lose me"
-	input.Cursor = len([]rune(input.Text))
-	app := &App{
-		cfg:          cfg,
-		state:        state,
-		irc:          &failingSendBackend{},
-		logger:       logging.New(false, "", "2006-01-02 15:04:05"),
-		redraw:       make(chan struct{}, 1),
-		input:        input,
-		transcript:   &transcriptList{List: widgets.NewList()},
-		inputHistory: make(map[string]*inputHistoryState),
+	for _, line := range []string{"do not lose me", "/msg alice do not lose me", "/me waves", "/notice alice do not lose me"} {
+		t.Run(line, func(t *testing.T) {
+			cfg := &config.Config{Relay: config.RelayConfig{Mode: "client"}}
+			state := model.New(100)
+			state.Select("testnet", "#chat")
+			input := widgets.NewInput()
+			input.Text = line
+			input.Cursor = len([]rune(input.Text))
+			app := &App{
+				cfg:          cfg,
+				state:        state,
+				irc:          &failingSendBackend{},
+				logger:       logging.New(false, "", "2006-01-02 15:04:05"),
+				redraw:       make(chan struct{}, 1),
+				input:        input,
+				transcript:   &transcriptList{List: widgets.NewList()},
+				inputHistory: make(map[string]*inputHistoryState),
+			}
+
+			app.handleKey(ui.Event{Type: ui.KeyboardEvent, ID: "<Enter>"})
+			if app.input.Text != line {
+				t.Fatalf("failed send cleared input: got %q", app.input.Text)
+			}
+		})
 	}
 
-	app.handleKey(ui.Event{Type: ui.KeyboardEvent, ID: "<Enter>"})
-	if app.input.Text != "do not lose me" {
-		t.Fatalf("failed send cleared input: got %q", app.input.Text)
-	}
 }
 
 func TestRelayReconnectLabelAdvertisesConfiguredKey(t *testing.T) {

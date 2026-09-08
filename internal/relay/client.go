@@ -27,6 +27,7 @@ const (
 type Client struct {
 	cfg *config.Config
 
+	transport net.Conn
 	sshClient *ssh.Client
 	ch        ssh.Channel
 	enc       *json.Encoder
@@ -77,13 +78,21 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		Timeout:         15 * time.Second,
 		ClientVersion:   "SSH-2.0-Copperline-relay",
 	}
-	sshClient, err := ssh.Dial("tcp", cfg.Relay.Address, sshCfg)
+	transport, err := net.DialTimeout("tcp", cfg.Relay.Address, sshCfg.Timeout)
 	if err != nil {
+		return nil, fmt.Errorf("connect relay %s: %w", cfg.Relay.Address, err)
+	}
+	// Bound the SSH handshake as well as the TCP dial.
+	_ = transport.SetDeadline(time.Now().Add(sshCfg.Timeout))
+	conn, chans, reqs, err := ssh.NewClientConn(transport, cfg.Relay.Address, sshCfg)
+	if err != nil {
+		_ = transport.Close()
 		if generatedKey {
 			return nil, fmt.Errorf("connect relay %s: %w (a new Copperline relay key was generated; add %s to the relay server authorized_keys file)", cfg.Relay.Address, err, publicKeyPath)
 		}
 		return nil, fmt.Errorf("connect relay %s: %w", cfg.Relay.Address, err)
 	}
+	sshClient := ssh.NewClient(conn, chans, reqs)
 	ch, requests, err := sshClient.OpenChannel(channelType, nil)
 	if err != nil {
 		sshClient.Close()
@@ -93,6 +102,7 @@ func NewClient(cfg *config.Config) (*Client, error) {
 
 	c := &Client{
 		cfg:          cfg,
+		transport:    transport,
 		sshClient:    sshClient,
 		ch:           ch,
 		enc:          json.NewEncoder(ch),
@@ -111,6 +121,7 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		c.close()
 		return nil, err
 	}
+	_ = transport.SetDeadline(time.Time{})
 	go c.reader()
 	go c.heartbeat()
 	return c, nil
@@ -252,8 +263,12 @@ func (c *Client) close() {
 		update := c.updateSink
 		c.mu.Unlock()
 		close(c.done)
-		_ = c.ch.Close()
-		_ = c.sshClient.Close()
+		// Close the socket first: SSH channel.Close itself writes to the peer
+		// and can hang indefinitely on a connection left behind by sleep.
+		_ = c.transport.Close()
+		if c.sshClient != nil {
+			_ = c.sshClient.Close()
+		}
 
 		c.pendingMu.Lock()
 		for id, waiter := range c.pending {
@@ -270,10 +285,19 @@ func (c *Client) close() {
 func (c *Client) send(f frame) error {
 	c.sendMu.Lock()
 	defer c.sendMu.Unlock()
+	select {
+	case <-c.done:
+		return errors.New("relay connection is closed")
+	default:
+	}
 	return c.enc.Encode(f)
 }
 
 func (c *Client) call(action string, req frame) (frame, error) {
+	return c.callWithTimeout(action, req, relayRequestTimeout)
+}
+
+func (c *Client) callWithTimeout(action string, req frame, timeout time.Duration) (frame, error) {
 	select {
 	case <-c.done:
 		return frame{}, errors.New("relay connection is closed")
@@ -287,18 +311,20 @@ func (c *Client) call(action string, req frame) (frame, error) {
 	c.pendingMu.Lock()
 	c.pending[id] = waiter
 	c.pendingMu.Unlock()
-	if err := c.send(req); err != nil {
+	defer func() {
 		c.pendingMu.Lock()
 		delete(c.pending, id)
 		c.pendingMu.Unlock()
-		// A write failure means this SSH attachment cannot safely be reused.
-		// Closing it flips TransportConnected immediately and wakes the TUI.
-		c.close()
-		return frame{}, err
-	}
-
-	timer := time.NewTimer(relayRequestTimeout)
+	}()
+	// The budget includes waiting for the writer and the SSH write, not just
+	// waiting for a response. Closing the transport unblocks a stuck writer.
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
+	go func() {
+		if err := c.send(req); err != nil {
+			c.close()
+		}
+	}()
 	select {
 	case resp := <-waiter:
 		if resp.Error != "" {

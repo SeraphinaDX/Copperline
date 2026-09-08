@@ -169,6 +169,12 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## Fixed in 0.2.2
+
+Reconnect readiness now waits for IRC registration. Chat, `/msg`, `/me`, and `/notice` retain their input if a send cannot be confirmed. A unique IRC PING/PONG checks that the server read past the text before reporting success; it does not guarantee recipient delivery or override channel permissions. If confirmation is lost, check the channel before retrying to avoid duplicates. Messages are not automatically resent.
+
+SSH request timeouts now include blocked writes, and stale attachments close their underlying socket first. IRC keepalive detection is faster. Update both relay servers and clients to get all fixes; relay protocol remains 2.
+
 ## Fixed in 0.2.1
 
 Channel selection once again clears activity indicators and follows the newest messages. IRC formatting controls and their color parameters no longer appear as stray digits in messages or restored log previews. Relay protocol remains 2.

@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"copperline/internal/config"
@@ -63,6 +64,7 @@ type Session struct {
 	mu      sync.Mutex
 	desired bool
 	running bool
+	ready   atomic.Bool
 }
 
 var defaultCaps = []string{
@@ -138,6 +140,8 @@ func (m *Manager) newClient(sc config.ServerConfig) *girc.Client {
 		SSL:           sc.TLS,
 		SupportedCaps: caps,
 		Version:       "Copperline by Britney Lozza",
+		PingDelay:     20 * time.Second,
+		PingTimeout:   15 * time.Second,
 	}
 	if sc.TLS {
 		gc.TLSConfig = &tls.Config{ServerName: sc.Host, InsecureSkipVerify: sc.SkipVerify, MinVersion: tls.VersionTLS12} //nolint:gosec
@@ -354,7 +358,9 @@ func (m *Manager) SendMessage(server, target, text string) error {
 	if target == "" || target == "*server*" {
 		return errors.New("select a channel or query first")
 	}
-	c.Cmd.Message(target, text)
+	if err := confirmSend(c, func() { c.Cmd.Message(target, text) }, 8*time.Second); err != nil {
+		return err
+	}
 	if !c.HasCapability("echo-message") {
 		m.emitMessage(model.Message{Time: time.Now(), Server: server, Target: target, Nick: c.GetNick(), Text: text, Kind: model.KindMessage})
 	}
@@ -512,7 +518,9 @@ func (m *Manager) SendAction(server, target, text string) error {
 	if err != nil {
 		return err
 	}
-	c.Cmd.Action(target, text)
+	if err := confirmSend(c, func() { c.Cmd.Action(target, text) }, 8*time.Second); err != nil {
+		return err
+	}
 	if !c.HasCapability("echo-message") {
 		m.emitMessage(model.Message{Time: time.Now(), Server: server, Target: target, Nick: c.GetNick(), Text: text, Kind: model.KindAction})
 	}
@@ -524,7 +532,9 @@ func (m *Manager) Notice(server, target, text string) error {
 	if err != nil {
 		return err
 	}
-	c.Cmd.Notice(target, text)
+	if err := confirmSend(c, func() { c.Cmd.Notice(target, text) }, 8*time.Second); err != nil {
+		return err
+	}
 	m.emitMessage(model.Message{Time: time.Now(), Server: server, Target: target, Nick: c.GetNick(), Text: text, Kind: model.KindNotice})
 	return nil
 }
@@ -784,7 +794,7 @@ func (m *Manager) IsConnected(server string) bool {
 	if err != nil {
 		return false
 	}
-	return s.client.IsConnected()
+	return s.ready.Load() && s.client.IsConnected()
 }
 
 // WantsConnection reports whether the user has asked Copperline to keep this
@@ -853,6 +863,15 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 	// Notify the UI only after this event's state mutations are complete.
 	// Transcript messages can wake it earlier through emitMessage/state.Add.
 	defer m.emitUpdate()
+	// IsConnected in girc means TCP is up, even during IRC registration.
+	if s, err := m.session(server); err == nil {
+		switch e.Command {
+		case girc.CONNECTED:
+			s.ready.Store(true)
+		case girc.DISCONNECTED, girc.CLOSED:
+			s.ready.Store(false)
+		}
+	}
 
 	when := e.Timestamp
 	if when.IsZero() {
@@ -1231,7 +1250,7 @@ func (m *Manager) client(name string) (*girc.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	if !s.client.IsConnected() {
+	if !s.ready.Load() || !s.client.IsConnected() {
 		return nil, fmt.Errorf("server %q is not connected", name)
 	}
 	return s.client, nil
