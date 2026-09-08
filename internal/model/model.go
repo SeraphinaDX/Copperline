@@ -20,36 +20,42 @@ const (
 )
 
 type Message struct {
-	Time    time.Time
-	Server  string
-	Target  string
-	Nick    string
-	Text    string
-	Kind    Kind
-	Tags    map[string]string
-	Mention bool
+	// RelayID is assigned once by the relay and survives history restoration.
+	RelayID string `json:",omitempty"`
+	// SuppressNotify is delivery metadata, never a change to message content.
+	SuppressNotify bool `json:",omitempty"`
+	Time           time.Time
+	Server         string
+	Target         string
+	Nick           string
+	Text           string
+	Kind           Kind
+	Tags           map[string]string
+	Mention        bool
 	// Replay marks messages restored from a Copperline relay's retained
-	// in-memory history. The TUI displays them normally but does not re-log or
+	// history. The TUI displays them normally but does not re-log or
 	// re-notify them on every client attachment.
 	Replay bool
 }
 
 type Buffer struct {
-	Server   string
-	Target   string
-	Messages []Message
-	Unread   int
-	Total    uint64
+	Server    string
+	Target    string
+	Messages  []Message
+	Unread    int
+	Total     uint64
+	ReadTotal uint64
 }
 
 // BufferInfo is a lightweight buffer snapshot for UI/navigation code that
 // does not need message history. Keeping these paths history-free avoids
 // copying every message in every buffer during routine redraws.
 type BufferInfo struct {
-	Server string
-	Target string
-	Unread int
-	Total  uint64
+	Server    string
+	Target    string
+	Unread    int
+	Total     uint64
+	ReadTotal uint64
 }
 
 // MessageWindow describes the retained message window for the current buffer.
@@ -134,17 +140,32 @@ func (s *State) Add(msg Message) {
 		}
 		b.Messages = b.Messages[drop:]
 	}
-	if s.CurrentKey != Key(msg.Server, msg.Target) {
-		b.Unread++
-	}
+	b.Unread++
 }
 
 func (s *State) Select(server, target string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	b := s.ensureLocked(server, target)
+	s.ensureLocked(server, target)
 	s.CurrentKey = Key(server, target)
-	b.Unread = 0
+}
+
+// MarkReadThrough acknowledges only the displayed snapshot, leaving messages
+// that arrived concurrently unread. Selecting a buffer alone is not a read.
+func (s *State) MarkReadThrough(server, target string, total uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	b := s.Buffers[Key(server, target)]
+	if b == nil {
+		return
+	}
+	if total > b.Total {
+		total = b.Total
+	}
+	if total > b.ReadTotal {
+		b.ReadTotal = total
+	}
+	b.Unread = int(b.Total - b.ReadTotal)
 }
 
 func (s *State) SelectKey(key string) bool {
@@ -154,7 +175,6 @@ func (s *State) SelectKey(key string) bool {
 		return false
 	}
 	s.CurrentKey = key
-	s.Buffers[key].Unread = 0
 	return true
 }
 
@@ -176,7 +196,7 @@ func (s *State) CurrentInfo() *BufferInfo {
 	if b == nil {
 		return nil
 	}
-	return &BufferInfo{Server: b.Server, Target: b.Target, Unread: b.Unread, Total: b.Total}
+	return &BufferInfo{Server: b.Server, Target: b.Target, Unread: b.Unread, Total: b.Total, ReadTotal: b.ReadTotal}
 }
 
 // SnapshotInfo returns lightweight buffer metadata in stable creation order.
@@ -187,7 +207,7 @@ func (s *State) SnapshotInfo() ([]BufferInfo, string) {
 	out := make([]BufferInfo, 0, len(s.Order))
 	for _, key := range s.Order {
 		if b := s.Buffers[key]; b != nil {
-			out = append(out, BufferInfo{Server: b.Server, Target: b.Target, Unread: b.Unread, Total: b.Total})
+			out = append(out, BufferInfo{Server: b.Server, Target: b.Target, Unread: b.Unread, Total: b.Total, ReadTotal: b.ReadTotal})
 		}
 	}
 	return out, s.CurrentKey
@@ -211,7 +231,7 @@ func (s *State) CurrentWindow(sinceTotal uint64) *MessageWindow {
 	}
 	msgs := append([]Message(nil), b.Messages[idx:]...)
 	return &MessageWindow{
-		BufferInfo: BufferInfo{Server: b.Server, Target: b.Target, Unread: b.Unread, Total: b.Total},
+		BufferInfo: BufferInfo{Server: b.Server, Target: b.Target, Unread: b.Unread, Total: b.Total, ReadTotal: b.ReadTotal},
 		Start:      start,
 		Messages:   msgs,
 	}
@@ -247,6 +267,12 @@ func (s *State) ContainsMessage(msg Message) bool {
 	}
 	for i := len(b.Messages) - 1; i >= 0; i-- {
 		cur := b.Messages[i]
+		if msg.RelayID != "" {
+			if cur.RelayID == msg.RelayID {
+				return true
+			}
+			continue
+		}
 		if cur.Time.Equal(msg.Time) && cur.Kind == msg.Kind && cur.Nick == msg.Nick && cur.Text == msg.Text {
 			return true
 		}

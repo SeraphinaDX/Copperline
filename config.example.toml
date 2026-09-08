@@ -33,6 +33,8 @@ mode = "direct"
 # user = "copperline"
 # host_key = "~/.config/copperline/relay_host_ed25519"
 # authorized_keys = "~/.config/copperline/relay_authorized_keys"
+# Optional structured replay history, independent of general.logging.
+# history_file = "~/.local/state/copperline/relay-history.json"
 
 # Relay-client settings. A dedicated Ed25519 client key is generated at
 # private_key (plus private_key.pub) if it does not exist. Copy the .pub file
@@ -50,6 +52,9 @@ mode = "direct"
 # Up/Down, Home/End, Tab, Escape, and gotui-style IDs such as <M-n>.
 [keybindings]
 next_buffer = "Ctrl+N"
+next_unread = "Alt+A"
+search_next = "F3"
+search_previous = "F4"
 previous_buffer = "Ctrl+P"
 user_list_down = "Alt+N"
 user_list_up = "Alt+P"

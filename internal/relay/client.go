@@ -103,7 +103,7 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		connected:    true,
 	}
 
-	if err := c.send(frame{Type: "hello", Version: protocolVersion}); err != nil {
+	if err := c.send(frame{Type: "hello", Version: protocolVersion, Bool: cfg.Gotify.Enabled}); err != nil {
 		c.close()
 		return nil, err
 	}

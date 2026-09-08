@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	protocolVersion = 1
+	protocolVersion = 2
 	channelType     = "copperline-relay@copperline"
 )
 

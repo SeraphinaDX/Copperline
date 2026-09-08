@@ -56,6 +56,9 @@ mode = "direct"
 
 [keybindings]
 next_buffer = "Ctrl+N"
+next_unread = "Alt+A"
+search_next = "F3"
+search_previous = "F4"
 previous_buffer = "Ctrl+P"
 user_list_down = "Alt+N"
 user_list_up = "Alt+P"
@@ -295,6 +298,7 @@ Selects how Copperline reaches IRC. The transport is implemented inside Copperli
 | `user` | string | `"copperline"` | SSH username accepted by the relay server and sent by the relay client. |
 | `host_key` | path | `~/.config/copperline/relay_host_ed25519` | Relay server Ed25519 host private key. Generated automatically if missing. |
 | `authorized_keys` | path | `~/.config/copperline/relay_authorized_keys` | Relay-specific public keys allowed to attach. The file is created if missing and re-read on every authentication attempt. |
+| `history_file` | path | empty (disabled) | Server-only structured replay checkpoint. Restored on startup, bounded by `general.history_lines` per buffer, independent of `general.logging`. See RELAY.md for checkpoint and failure semantics. |
 | `address` | string | none | Relay server address, such as `relay.example.com:2222`, required in client mode. |
 | `private_key` | path | `~/.config/copperline/relay_client_ed25519` | Relay-client private key. If absent, Copperline generates an Ed25519 keypair and writes a matching `.pub` file. |
 | `private_key_passphrase_env` | string | none | Environment variable containing the passphrase for an encrypted client private key. Copperline intentionally does not depend on `ssh-agent`. |
@@ -318,6 +322,9 @@ Copperline's main navigation and action keys can be changed without rebuilding t
 ```toml
 [keybindings]
 next_buffer = "Ctrl+N"
+next_unread = "Alt+A"
+search_next = "F3"
+search_previous = "F4"
 previous_buffer = "Ctrl+P"
 user_list_down = "Alt+N"
 user_list_up = "Alt+P"
@@ -346,6 +353,9 @@ relay_reconnect = "Alt+R"
 | `jump_buffer` | `F6` | Enter numbered buffer-jump mode. |
 | `jump_cancel` | `Escape` | Cancel numbered buffer-jump mode. |
 | `complete_nick` | `Tab` | Complete/cycle nicknames. |
+| `next_unread` | `Alt+A` | Jump to the next unread buffer in sidebar order. |
+| `search_next` | `F3` | Jump to the next matching message for the current search; wraps. |
+| `search_previous` | `F4` | Jump to the previous matching message; wraps. |
 | `history_previous` | `Up` | Recall the previous input-history item for the current buffer. |
 | `history_next` | `Down` | Recall the next input-history item, or restore the saved draft. |
 | `transcript_page_up` | `PageUp` | Scroll the transcript up one page. |
@@ -361,6 +371,10 @@ relay_reconnect = "Alt+R"
 Readable key names are accepted: `Ctrl+<letter>`, `Alt+<letter>` (or `Meta+<letter>`), `F1` through `F64`, `PageUp`, `PageDown`, `Up`, `Down`, `End`, `Tab`, and `Escape`. gotui-style event IDs such as `<M-n>` and `<C-p>` are also accepted. `Ctrl+` and `Alt+` bindings currently take a single character.
 
 Copperline validates this section when it starts. Unsupported names produce a configuration error, and two actions cannot use the same key. Core input-editing keys (`Enter`, `Backspace`/`Ctrl+H`, `Left`, `Right`, `Home`, `Space`, and unmodified printable characters) are reserved and cannot be assigned to actions. `End` remains available as an action because it is Copperline's default `follow_bottom` key.
+
+Use `/search text` for a literal, case-insensitive search of retained messages in the current buffer. Matching text is highlighted, and the transcript title shows the matching-message position or no-results feedback. `/search` with no text clears it; switching buffers also clears the search. Older disk-log previews are excluded.
+
+Selecting an unread buffer opens at its first retained unread message without acknowledging the rest. The divider and count remain until you resume following the bottom or explicitly `/markread`. Messages arriving while scrolled up stay unread. Local read positions are session-only and are not synchronized between relay clients.
 
 Input history is session-only and per-buffer. By default Copperline keeps 10 entries per buffer; change `[general].input_history_limit` to choose another limit, or set it to `0` to disable input history. Both messages and slash commands are recorded, consecutive duplicates are collapsed, and a draft present before the first `history_previous` action is restored when `history_next` moves past the newest entry. To make Up/Down available for history, the default single-line transcript bindings are now `Alt+K`/`Alt+J`. Older configs containing the previous explicit `Up`/`Down` transcript defaults are migrated automatically.
 
@@ -508,6 +522,8 @@ DCC traffic is a direct peer-to-peer TCP connection. IRC TLS does not encrypt th
 ---
 
 # `[gotify]`
+
+In relay-server mode, Gotify alerts are sent only while no clients are attached. With attached clients, the oldest client with Gotify enabled owns notifications and uses its own settings; other clients suppress duplicate alerts. See [RELAY.md](RELAY.md#notifications-while-detached).
 
 Optional Gotify push notifications. Copperline sends notifications using Gotify's application message API. Create an **application** in the Gotify WebUI and use that application's token; a Gotify client token is not the token used for sending messages.
 

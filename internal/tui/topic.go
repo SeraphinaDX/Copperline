@@ -1,6 +1,10 @@
 package tui
 
-import ui "github.com/metaspartan/gotui/v5"
+import (
+	"strings"
+
+	"github.com/mattn/go-runewidth"
+)
 
 const (
 	topicSingleLineHeight = 3 // border + one content line
@@ -17,9 +21,12 @@ func topicWidgetHeight(topic string, outerWidth int) int {
 		return topicSingleLineHeight
 	}
 
-	cells := ui.RunesToStyledCells([]rune(topic), ui.NewStyle(ui.ColorWhite))
-	wrapped := ui.WrapCells(cells, uint(innerWidth))
-	if len(ui.SplitCells(wrapped, '\n')) > 1 {
+	for _, line := range strings.Split(topic, "\n") {
+		if runewidth.StringWidth(line) > innerWidth {
+			return topicDoubleLineHeight
+		}
+	}
+	if strings.Contains(topic, "\n") {
 		return topicDoubleLineHeight
 	}
 	return topicSingleLineHeight

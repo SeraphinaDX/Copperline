@@ -45,6 +45,9 @@ type GeneralConfig struct {
 type KeybindingsConfig struct {
 	NextBuffer         string `toml:"next_buffer"`
 	PreviousBuffer     string `toml:"previous_buffer"`
+	NextUnread         string `toml:"next_unread"`
+	SearchNext         string `toml:"search_next"`
+	SearchPrevious     string `toml:"search_previous"`
 	UserListDown       string `toml:"user_list_down"`
 	UserListUp         string `toml:"user_list_up"`
 	JumpBuffer         string `toml:"jump_buffer"`
@@ -71,6 +74,9 @@ func (k *KeybindingsConfig) applyDefaults() {
 	}
 	set(&k.NextBuffer, "Ctrl+N")
 	set(&k.PreviousBuffer, "Ctrl+P")
+	set(&k.NextUnread, "Alt+A")
+	set(&k.SearchNext, "F3")
+	set(&k.SearchPrevious, "F4")
 	set(&k.UserListDown, "Alt+N")
 	set(&k.UserListUp, "Alt+P")
 	set(&k.JumpBuffer, "F6")
@@ -109,6 +115,9 @@ func (k KeybindingsConfig) namedBindings() []struct {
 	}{
 		{"next_buffer", k.NextBuffer},
 		{"previous_buffer", k.PreviousBuffer},
+		{"next_unread", k.NextUnread},
+		{"search_next", k.SearchNext},
+		{"search_previous", k.SearchPrevious},
 		{"user_list_down", k.UserListDown},
 		{"user_list_up", k.UserListUp},
 		{"jump_buffer", k.JumpBuffer},
@@ -347,6 +356,7 @@ type RelayConfig struct {
 	Listen         string `toml:"listen"`
 	HostKey        string `toml:"host_key"`
 	AuthorizedKeys string `toml:"authorized_keys"`
+	HistoryFile    string `toml:"history_file"` // empty disables structured replay persistence
 
 	// Client mode.
 	Address                 string `toml:"address"`

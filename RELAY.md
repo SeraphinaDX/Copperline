@@ -161,11 +161,33 @@ In `client` mode the local Copperline process owns the presentation layer:
 - theme and keybindings
 - local input history
 - local Lua scripts
-- local Gotify notifications while that client is attached
+- local Gotify notifications when elected as the notification owner
 
 When a client attaches, the relay sends its retained in-memory messages first, then switches to live streaming. Replayed messages are displayed as normal conversation text but are not re-logged or re-notified by the client, preventing duplicate logs/notifications every time a client starts.
 
 Multiple Copperline clients can attach to the same relay simultaneously. Messages and IRC state updates are broadcast to every attached client, and commands from any authorized client operate the shared IRC session.
+
+## Notifications while detached
+
+Configure the usual `[gotify]` section on the **relay server** to receive mention and private-message alerts when no Copperline clients are attached. The existing `mentions`, `private_messages`, token, priority, and timeout settings apply. Delivery uses the bounded asynchronous Gotify queue; replayed messages and your own messages never generate alerts.
+
+While clients are attached, the oldest attached client with Gotify enabled owns live notifications. Other clients receive the same messages with notifications suppressed. Ownership transfers on detach. The owner's Gotify settings determine which alerts are sent and where. If attached clients all have Gotify disabled, no alerts are sent; the server resumes alerts when the last client detaches.
+
+## History across relay restarts
+
+Persistence is optional. Add this setting to the relay server's existing `[relay]` section:
+
+```toml
+history_file = "~/.local/state/copperline/relay-history.json"
+```
+
+The relay restores this structured history before accepting clients. The current server-side `[general].history_lines` limit applies per buffer, including when restoring a file created with a higher limit. Each message has a stable relay ID, so identical text sent at the same time remains distinct and reconnect replay retains its identity.
+
+When messages change, a background worker checkpoints at most once per second using a private `0600` temporary file, file sync, and atomic replacement. Clean shutdown writes a final checkpoint. An abrupt termination can lose messages since the last successful checkpoint; this is not a transactional message journal. Write failures are reported in the relay's process log. A corrupt or unsupported history file stops startup without overwriting that file.
+
+`history_file` defaults to empty (disabled) and is independent of `[general].logging`. For no on-disk conversation storage, disable logging and leave `history_file` empty. Disabling persistence does not delete a previously saved file. Give each relay process its own history path and keep it separate from keys, configuration, and ordinary log files.
+
+**Upgrade both relay server and clients to 0.2.0 together.** Protocol 2 carries stable message IDs, notification eligibility in the client hello, and per-recipient notification suppression. Protocol 1 attachments are rejected to avoid duplicate notifications from clients that do not understand ownership.
 
 ## Commands and detach behavior
 
@@ -183,11 +205,11 @@ This makes the relay behave like a persistent IRC bouncer rather than like a rem
 
 DCC is owned by the relay server because that is where the IRC/network backend runs. Incoming DCC SEND files are therefore saved in the relay server's configured `download_dir`.
 
-DCC CHAT lines are forwarded back to the requesting Copperline client. For DCC SEND initiated from a relay client, the path currently refers to the **relay server's filesystem**; transferring an arbitrary local client file to the relay before DCC SEND is not part of relay protocol version 1.
+DCC CHAT lines are forwarded back to the requesting Copperline client. For DCC SEND initiated from a relay client, the path currently refers to the **relay server's filesystem**; transferring an arbitrary local client file to the relay before DCC SEND is not part of relay protocol version 2.
 
 ## Protocol
 
-The application protocol is versioned independently from SSH. Version 1 uses newline-delimited JSON frames over the private SSH channel. It carries:
+The application protocol is versioned independently from SSH. Version 2 uses newline-delimited JSON frames over the private SSH channel. It carries:
 
 - retained and live `model.Message` records
 - IRC connection/event records
