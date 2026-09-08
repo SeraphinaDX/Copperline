@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"copperline/internal/model"
 )
 
 type searchState struct {
@@ -42,7 +44,7 @@ func (a *App) moveSearch(direction int) {
 		if sequence >= a.transcriptTotal {
 			break
 		}
-		if len(searchRanges([]rune(msg.Nick+" "+msg.Text), a.search.query)) > 0 {
+		if len(searchRanges([]rune(msg.Nick+" "+model.PlainText(msg.Text)), a.search.query)) > 0 {
 			matches = append(matches, sequence)
 		}
 	}

@@ -40,11 +40,11 @@ func TestUnreadSelectionAndEnd(t *testing.T) {
 	a.selectNextUnread()
 	a.rebuildCurrent()
 	b := a.state.CurrentInfo()
-	if b.Target != "#two" || b.Unread != 3 || a.follow {
-		t.Fatalf("selection cleared unread: %#v follow=%v", b, a.follow)
+	if b.Target != "#two" || b.Unread != 0 || !a.follow {
+		t.Fatalf("selection did not clear activity: %#v follow=%v", b, a.follow)
 	}
-	if a.transcript.SelectedRow != 0 || !a.transcript.unread {
-		t.Fatal("did not open at first unread")
+	if a.transcript.SelectedRow != 2 || a.transcript.unread {
+		t.Fatal("did not open at newest message")
 	}
 	a.follow = true
 	a.rebuildCurrent()

@@ -218,7 +218,7 @@ func (a *App) rebuildCurrent() {
 		a.transcriptReset = false
 
 		if bufferChanged {
-			a.follow = b.Unread == 0
+			a.follow = true
 			a.search = searchState{}
 			if !a.restoreTranscriptCache(key) {
 				a.transcriptStart = 0
