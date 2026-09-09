@@ -169,6 +169,10 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## New in 0.2.5
+
+`Alt+B` toggles the channel list and `Alt+U` toggles the user list independently. Chat uses the freed space, and typing and live updates continue. Visibility is temporary for the current session; the user list still automatically hides on narrow terminals. Rebind these with `[keybindings].toggle_channel_list` and `toggle_user_list`.
+
 ## Fixed in 0.2.4
 
 When Gotify is enabled on the relay, the relay sends eligible mention/private-message alerts whether or not clients are attached. Client alerts are suppressed to avoid duplicates. If relay Gotify is disabled, the oldest eligible attached client remains responsible for notifications.
@@ -437,6 +441,8 @@ input_history_limit = 10
 ```
 
 Set it to `0` to disable input history.
+
+Press `Alt+B` to show/hide the channel list, or `Alt+U` to show/hide the user list. Both toggles keep chat live and your draft intact.
 
 Press `Alt-L` for bare/copy mode. Copperline temporarily hides the normal UI chrome and disables terminal mouse reporting so the terminal can perform normal text selection. IRC, logging, Gotify, DCC, scripting, and incoming message state continue in the background.
 

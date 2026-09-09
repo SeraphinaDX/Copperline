@@ -60,6 +60,8 @@ type KeybindingsConfig struct {
 	TranscriptLineUp   string `toml:"transcript_line_up"`
 	TranscriptLineDown string `toml:"transcript_line_down"`
 	CopyMode           string `toml:"copy_mode"`
+	ToggleChannelList  string `toml:"toggle_channel_list"`
+	ToggleUserList     string `toml:"toggle_user_list"`
 	FollowBottom       string `toml:"follow_bottom"`
 	ClearInput         string `toml:"clear_input"`
 	Quit               string `toml:"quit"`
@@ -99,6 +101,8 @@ func (k *KeybindingsConfig) applyDefaults() {
 	set(&k.TranscriptLineUp, "Alt+K")
 	set(&k.TranscriptLineDown, "Alt+J")
 	set(&k.CopyMode, "Alt+L")
+	set(&k.ToggleChannelList, "Alt+B")
+	set(&k.ToggleUserList, "Alt+U")
 	set(&k.FollowBottom, "End")
 	set(&k.ClearInput, "Ctrl+U")
 	set(&k.Quit, "Ctrl+C")
@@ -130,6 +134,8 @@ func (k KeybindingsConfig) namedBindings() []struct {
 		{"transcript_line_up", k.TranscriptLineUp},
 		{"transcript_line_down", k.TranscriptLineDown},
 		{"copy_mode", k.CopyMode},
+		{"toggle_channel_list", k.ToggleChannelList},
+		{"toggle_user_list", k.ToggleUserList},
 		{"follow_bottom", k.FollowBottom},
 		{"clear_input", k.ClearInput},
 		{"quit", k.Quit},

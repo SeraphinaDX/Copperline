@@ -15,14 +15,7 @@ func (a *App) render() {
 	if w < 40 || h < 10 {
 		return
 	}
-	left := 28
-	if w < 70 {
-		left = 20
-	}
-	right := 0
-	if w > 90 {
-		right = userPaneWidth
-	}
+	left, right := a.panelWidths(w)
 	bottom := uiBottomRows
 
 	a.rebuildCurrent()
@@ -48,7 +41,10 @@ func (a *App) render() {
 	}
 	a.status.SetRect(0, h-1, statusRight, h)
 
-	items := []ui.Drawable{a.sidebar, a.topic, a.transcript, a.input, a.status}
+	items := []ui.Drawable{a.topic, a.transcript, a.input, a.status}
+	if left > 0 {
+		items = append(items, a.sidebar)
+	}
 	if relayWidth > 0 {
 		items = append(items, a.relayControl)
 	}
@@ -474,4 +470,24 @@ func (a *App) loadConversationLogBacklog(b *model.BufferInfo) bool {
 	a.transcriptStart = 0
 	a.transcriptTotal = 0
 	return true
+}
+
+// Use the same panel geometry for drawing and mouse hit testing.
+func (a *App) panelWidths(width int) (left, right int) {
+	if !a.channelListHidden {
+		left = 28
+		if width < 70 {
+			left = 20
+		}
+	}
+	if !a.userListHidden && width > 90 {
+		right = userPaneWidth
+	}
+	return
+}
+
+func (a *App) panelLayoutChanged() {
+	a.clearNickClick()
+	a.transcriptReset = true
+	a.forceScreenSync = true
 }

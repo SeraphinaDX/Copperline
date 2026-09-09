@@ -164,6 +164,14 @@ func (a *App) handleKey(e ui.Event) {
 	case a.relayReconnectEnabled() && matches(keys.RelayReconnect):
 		a.requestRelayReconnect()
 		return
+	case matches(keys.ToggleChannelList):
+		a.channelListHidden = !a.channelListHidden
+		a.panelLayoutChanged()
+		return
+	case matches(keys.ToggleUserList):
+		a.userListHidden = !a.userListHidden
+		a.panelLayoutChanged()
+		return
 	case matches(keys.CopyMode):
 		a.setCopyMode(true)
 		return

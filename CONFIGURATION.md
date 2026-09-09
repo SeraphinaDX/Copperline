@@ -72,6 +72,8 @@ transcript_page_down = "PageDown"
 transcript_line_up = "Alt+K"
 transcript_line_down = "Alt+J"
 copy_mode = "Alt+L"
+toggle_channel_list = "Alt+B"
+toggle_user_list = "Alt+U"
 follow_bottom = "End"
 clear_input = "Ctrl+U"
 quit = "Ctrl+C"
@@ -338,6 +340,8 @@ transcript_page_down = "PageDown"
 transcript_line_up = "Alt+K"
 transcript_line_down = "Alt+J"
 copy_mode = "Alt+L"
+toggle_channel_list = "Alt+B"
+toggle_user_list = "Alt+U"
 follow_bottom = "End"
 clear_input = "Ctrl+U"
 quit = "Ctrl+C"
@@ -363,6 +367,8 @@ relay_reconnect = "Alt+R"
 | `transcript_line_up` | `Alt+K` | Scroll the transcript up one line. |
 | `transcript_line_down` | `Alt+J` | Scroll the transcript down one line. |
 | `copy_mode` | `Alt+L` | Toggle bare/copy mode. |
+| `toggle_channel_list` | `Alt+B` | Show/hide the channel list independently. |
+| `toggle_user_list` | `Alt+U` | Show/hide the user list independently. |
 | `follow_bottom` | `End` | Return to/follow the newest transcript line. |
 | `clear_input` | `Ctrl+U` | Clear the input field. |
 | `quit` | `Ctrl+C` | Quit Copperline. |

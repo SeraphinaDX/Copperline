@@ -11,11 +11,8 @@ func (a *App) handleMouse(e ui.Event) {
 	if !ok {
 		return
 	}
-	left := 28
 	w, _ := ui.TerminalDimensions()
-	if w < 70 {
-		left = 20
-	}
+	left, _ := a.panelWidths(w)
 
 	switch e.ID {
 	case "<MouseWheelUp>":
@@ -117,7 +114,8 @@ func clampUserScroll(scroll, total, visible int) int {
 
 func (a *App) scrollUsers(amount int) {
 	w, h := ui.TerminalDimensions()
-	if w <= 90 || amount == 0 {
+	_, right := a.panelWidths(w)
+	if right == 0 || amount == 0 {
 		return
 	}
 	visible := userListVisibleRows(h)
@@ -162,7 +160,8 @@ func (a *App) refreshUserRows(visible int) {
 
 func (a *App) mouseOverUsers(x, y int) bool {
 	w, h := ui.TerminalDimensions()
-	if w <= 90 {
+	_, right := a.panelWidths(w)
+	if right == 0 {
 		return false
 	}
 	return x >= w-userPaneWidth && x < w && y >= 0 && y < h-uiBottomRows
@@ -170,7 +169,8 @@ func (a *App) mouseOverUsers(x, y int) bool {
 
 func (a *App) mouseOverUserRows(x, y int) bool {
 	w, h := ui.TerminalDimensions()
-	if w <= 90 {
+	_, right := a.panelWidths(w)
+	if right == 0 {
 		return false
 	}
 	return x > w-userPaneWidth && x < w-1 && y > 0 && y < h-uiBottomRows-1
