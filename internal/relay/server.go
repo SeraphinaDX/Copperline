@@ -232,9 +232,16 @@ func (p *serverPeer) serve() {
 func (p *serverPeer) handleRequest(req frame) {
 	var err error
 	var result bool
+	var resultText string
 	m := p.server.irc
 
 	switch req.Action {
+	case "gotify_status":
+		resultText = p.server.gotifyStatus()
+	case "gotify_test":
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		err = p.server.notifier.Test(ctx)
+		cancel()
 	case "ping":
 		result = true
 	case "connect":
@@ -277,7 +284,7 @@ func (p *serverPeer) handleRequest(req frame) {
 		err = fmt.Errorf("unknown relay action %q", req.Action)
 	}
 
-	resp := frame{Type: "response", ID: req.ID, Bool: result}
+	resp := frame{Type: "response", ID: req.ID, Text: resultText, Bool: result}
 	if err != nil {
 		resp.Error = err.Error()
 	}
@@ -463,4 +470,11 @@ func (s *Server) broadcast(f frame) {
 	for _, p := range peers {
 		_ = p.send(f) // send detaches slow peers without waiting for SSH cleanup.
 	}
+}
+
+func (s *Server) gotifyStatus() string {
+	if s.notifier.Enabled() {
+		return "Relay Gotify: " + s.notifier.Status() + "; relay sends alerts regardless of attached clients"
+	}
+	return "Relay Gotify: disabled; alerts depend on an attached client with Gotify enabled"
 }

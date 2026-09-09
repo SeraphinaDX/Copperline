@@ -607,3 +607,12 @@ func cloneServerSnapshot(in ircclient.ServerSnapshot) ircclient.ServerSnapshot {
 }
 
 var _ ircclient.Backend = (*Client)(nil)
+
+func (c *Client) GotifyStatus() (string, error) {
+	resp, err := c.call("gotify_status", frame{})
+	return resp.Text, err
+}
+func (c *Client) GotifyTest() error {
+	_, err := c.call("gotify_test", frame{})
+	return err
+}

@@ -257,10 +257,33 @@ func (a *App) executeLua(b *model.Buffer, sub, tail string) {
 }
 
 func (a *App) executeGotify(b *model.Buffer, sub string) {
+	if remote, ok := a.irc.(interface {
+		GotifyStatus() (string, error)
+		GotifyTest() error
+	}); ok && (strings.EqualFold(sub, "status") || strings.EqualFold(sub, "test")) {
+		server, target := b.Server, b.Target
+		go func() {
+			var text string
+			var err error
+			if strings.EqualFold(sub, "status") {
+				text, err = remote.GotifyStatus()
+			} else {
+				err = remote.GotifyTest()
+				text = "Relay Gotify test notification sent"
+			}
+			if err != nil {
+				a.local(server, target, model.KindError, "Relay Gotify: "+err.Error())
+				return
+			}
+			a.local(server, target, model.KindSystem, text)
+		}()
+		return
+	}
+
 	switch strings.ToLower(sub) {
 	case "status":
 		if a.gotify != nil && a.gotify.Enabled() {
-			a.local(b.Server, b.Target, model.KindSystem, "Gotify enabled")
+			a.local(b.Server, b.Target, model.KindSystem, "Gotify: "+a.gotify.Status())
 		} else {
 			a.local(b.Server, b.Target, model.KindSystem, "Gotify disabled")
 		}

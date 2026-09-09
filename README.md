@@ -169,6 +169,12 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## Fixed in 0.2.4
+
+When Gotify is enabled on the relay, the relay sends eligible mention/private-message alerts whether or not clients are attached. Client alerts are suppressed to avoid duplicates. If relay Gotify is disabled, the oldest eligible attached client remains responsible for notifications.
+
+In relay-client mode, `/gotify status` and `/gotify test` now query/test the relay's notifier. Status includes HTTP delivery successes, failures, queue drops, and the last attempt/success/error. Counters reset when Copperline restarts; HTTP success means Gotify accepted the alert, not that a phone displayed it. Failed alerts are not automatically retried. Update the relay and clients for remote diagnostics; protocol remains 2.
+
 ## Fixed in 0.2.3
 
 A sleeping or stalled relay client can no longer block shared IRC broadcasts while its SSH channel is being closed. Slow attachments are removed immediately, with socket cleanup in the background and a timeout on outgoing channel writes. Other attached machines remain independent of that cleanup. Typing notifications now run outside the keyboard handler, with at most one in flight, so an unresponsive relay cannot freeze draft editing through typing updates.
@@ -317,7 +323,7 @@ Log files are created with mode `0600`; directories use `0700`.
 
 ### Gotify notifications
 
-Copperline can push incoming mentions and private messages to Gotify. Gotify delivery is asynchronous so a slow or unavailable notification service does not freeze IRC or the TUI.
+Copperline can push incoming mentions and private messages to Gotify. Gotify delivery is asynchronous so a slow or unavailable notification service does not freeze IRC or the TUI. When configured on the relay server, alerts continue with clients attached or detached. Use `/gotify status` on an updated relay client to inspect the relay's delivery counters and last error; `/gotify test` sends a test from the relay. In direct mode these commands inspect the local notifier.
 
 ```toml
 [gotify]
