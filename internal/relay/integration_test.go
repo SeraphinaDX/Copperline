@@ -4,6 +4,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -80,6 +81,14 @@ func TestSSHReplayAfterRestart(t *testing.T) {
 		}
 	}
 	c, messages := connect()
+	status, err := c.GotifyStatus()
+	if err != nil || !strings.Contains(status, "Relay Gotify: disabled") {
+		t.Fatalf("remote Gotify status=%q err=%v", status, err)
+	}
+	if err := c.GotifyTest(); err == nil || !strings.Contains(err.Error(), "disabled") {
+		t.Fatalf("remote Gotify test error=%v", err)
+	}
+
 	msg := receive(messages)
 	if msg.RelayID != id || !msg.Replay {
 		t.Fatalf("restored SSH replay=%#v", msg)

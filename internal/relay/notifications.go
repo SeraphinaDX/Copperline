@@ -4,6 +4,7 @@ import "copperline/internal/model"
 
 // Called with syncMu held, so attachment and live delivery have one boundary.
 func (s *Server) deliverMessage(msg model.Message, self string) {
+	relayOwns := s.notifier.Enabled()
 	s.peersMu.Lock()
 	peers := make([]*serverPeer, 0, len(s.peers))
 	var owner *serverPeer
@@ -14,12 +15,12 @@ func (s *Server) deliverMessage(msg model.Message, self string) {
 		}
 	}
 	s.peersMu.Unlock()
-	if len(peers) == 0 {
+	if relayOwns {
 		s.notifier.NotifyMessage(s.cfg.Gotify, msg, self)
 	}
 	for _, p := range peers {
 		copy := msg
-		copy.SuppressNotify = p != owner
+		copy.SuppressNotify = relayOwns || p != owner
 		_ = p.send(frame{Type: "message", Message: &copy})
 	}
 }
