@@ -70,6 +70,8 @@ type App struct {
 	transcriptKey         string
 	transcriptReset       bool
 	forceScreenSync       bool
+	channelListHidden     bool
+	userListHidden        bool
 	transcriptStart       uint64
 	transcriptTotal       uint64
 	transcriptFromLog     bool
