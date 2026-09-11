@@ -169,6 +169,14 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## Fixed in 0.2.6
+
+Multiline paste is collected as a single draft instead of interpreting each pasted newline as Enter. Newlines appear as `↵` in the input; press Enter to send the draft as ordinary chat text. Delivery runs in the background, one bounded message at a time, with progress in the status bar. You can keep editing a new draft, switch channels, or use `/paste cancel` to stop after the current line. IRC flood protection still limits transmission speed.
+
+A stopped or failed paste retains unconfirmed/unsent text. `/paste restore` puts that remainder back into the input and selects its original target; check the last attempted line before retrying because delivery can be uncertain. `/paste discard` removes the retained remainder, and `/paste status` shows progress. Pasted slash-prefixed lines in a multiline draft are sent as text. Long lines are split on UTF-8 boundaries and empty lines are skipped. Large single-line pastes use the same background sender. Paste collection is limited to 1 MiB; an oversized paste is rejected as a whole. This requires terminal bracketed-paste support.
+
+The relay also rejects overlapping message sends promptly rather than accumulating rate-limit waits against its shared IRC connection. Update clients for paste handling and the relay for the send guard; protocol remains 2.
+
 ## New in 0.2.5
 
 `Alt+B` toggles the channel list and `Alt+U` toggles the user list independently. Chat uses the freed space, and typing and live updates continue. Visibility is temporary for the current session; the user list still automatically hides on narrow terminals. Rebind these with `[keybindings].toggle_channel_list` and `toggle_user_list`.
@@ -475,6 +483,10 @@ Press `Alt-L` for bare/copy mode. Copperline temporarily hides the normal UI chr
 /dcc list
 /dcc accept nick
 /dcc send nick /path/to/file
+/paste status
+/paste cancel
+/paste restore
+/paste discard
 /gotify status
 /gotify test
 /lua list

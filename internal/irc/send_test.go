@@ -109,3 +109,43 @@ func TestTCPConnectionIsNotIRCReady(t *testing.T) {
 		t.Fatal("disconnected connection still ready")
 	}
 }
+
+func TestOverlappingSendDoesNotBackUpSharedConnection(t *testing.T) {
+	m := New(&config.Config{Servers: []config.ServerConfig{{Name: "test", Host: "irc.test", Nick: "tester", User: "tester"}}}, nil)
+	c := m.sessions["test"].client
+	lines := mockIRC(t, c, "silent")
+	c.RunHandlers(&girc.Event{Command: girc.CONNECTED})
+	first := make(chan error, 1)
+	go func() { first <- m.SendMessage("test", "#chat", "first") }()
+	deadline := time.After(time.Second)
+waiting:
+	for {
+		select {
+		case line := <-lines:
+			if strings.HasPrefix(line, "PRIVMSG ") {
+				break waiting
+			}
+		case <-deadline:
+			t.Fatal("first send never reached server")
+		}
+	}
+	second := make(chan error, 1)
+	go func() { second <- m.SendMessage("test", "#chat", "second") }()
+	select {
+	case err := <-second:
+		if err == nil || !strings.Contains(err.Error(), "another message") {
+			t.Fatalf("overlapping send error=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("overlapping send joined a rate-limit backlog")
+	}
+	if !c.IsConnected() {
+		t.Fatal("busy send disconnected shared IRC connection")
+	}
+	c.Close()
+	select {
+	case <-first:
+	case <-time.After(time.Second):
+		t.Fatal("pending send did not stop")
+	}
+}

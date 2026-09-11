@@ -52,6 +52,18 @@ func (a *App) handleUIEvent(e ui.Event) {
 		a.syncOutgoingTyping()
 		return
 	case ui.KeyboardEvent:
+		if key, ok := e.Payload.(*tcell.EventKey); ok {
+			if key.Key() == pasteKey {
+				a.insertPaste(key.Str())
+				return
+			}
+			if key.Key() == pasteTooLargeKey {
+				if b := a.state.CurrentInfo(); b != nil {
+					a.local(b.Server, b.Target, model.KindError, "Paste exceeds 1 MiB; nothing inserted.")
+				}
+				return
+			}
+		}
 		if delta := userListScrollEventDelta(e, a.cfg.Keybindings); delta != 0 {
 			a.resetNickCompletion()
 			a.scrollUsers(delta)
@@ -142,6 +154,9 @@ func (a *App) handleKey(e ui.Event) {
 				a.resetInputHistoryNavigation()
 			}
 		}
+		if a.input.Text == "" {
+			a.pasteLiteral = false
+		}
 		a.syncOutgoingTyping()
 	}()
 
@@ -179,6 +194,7 @@ func (a *App) handleKey(e ui.Event) {
 		a.stopped.Store(true)
 		return
 	case matches(keys.ClearInput):
+		a.pasteLiteral = false
 		a.input.Text = ""
 		a.input.Cursor = 0
 		return
@@ -237,6 +253,10 @@ func (a *App) handleKey(e ui.Event) {
 
 	switch id {
 	case "<Enter>":
+		if a.pasteLiteral || strings.Contains(a.input.Text, "\n") {
+			a.startPasteSend()
+			return
+		}
 		line := strings.TrimSpace(a.input.Text)
 		if line == "" {
 			return
@@ -247,6 +267,12 @@ func (a *App) handleKey(e ui.Event) {
 		// input was cleared first, so a half-dead SSH attachment could silently eat
 		// a message while Copperline was still displaying cached IRC state.
 		if !strings.HasPrefix(line, "/") {
+			if a.pasteSend != nil && a.pasteSend.active {
+				if b := a.state.CurrentInfo(); b != nil {
+					a.local(b.Server, b.Target, model.KindSystem, "Paste is sending; draft kept. /paste cancel stops the remaining lines.")
+				}
+				return
+			}
 			b := a.state.CurrentInfo()
 			if b == nil {
 				return

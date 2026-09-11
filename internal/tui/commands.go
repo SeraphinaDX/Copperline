@@ -42,6 +42,8 @@ func (a *App) execute(line string) {
 	arg1, tail := cutWord(rest)
 
 	switch cmd {
+	case "paste":
+		a.executePaste(rest)
 	case "search":
 		a.startSearch(rest)
 	case "searchnext":
@@ -51,7 +53,7 @@ func (a *App) execute(line string) {
 	case "unread":
 		a.selectNextUnread()
 	case "help":
-		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /ctcp /nick /topic /whois /raw /history /search /searchnext /searchprev /unread /markread /caps /dcc /gotify /lua /close /quit")
+		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /ctcp /nick /topic /whois /raw /history /search /searchnext /searchprev /unread /markread /caps /dcc /paste /gotify /lua /close /quit")
 	case "server":
 		if arg1 == "" {
 			a.local(b.Server, b.Target, model.KindSystem, "servers: "+strings.Join(a.irc.ServerNames(), ", "))
@@ -372,5 +374,45 @@ func (a *App) sendTextCommand(line string) (bool, error) {
 			return true, fmt.Errorf("usage: /notice target message")
 		}
 		return true, a.irc.Notice(b.Server, arg, strings.TrimSpace(tail))
+	}
+}
+
+func (a *App) executePaste(sub string) {
+	b := a.state.CurrentInfo()
+	if b == nil {
+		return
+	}
+	batch := a.pasteSend
+	if batch == nil {
+		a.local(b.Server, b.Target, model.KindSystem, "No pending paste.")
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(sub)) {
+	case "cancel":
+		if batch.active {
+			batch.cancel()
+		}
+	case "restore":
+		if batch.active {
+			a.local(b.Server, b.Target, model.KindSystem, "Cancel the paste and wait for the current line first.")
+			return
+		}
+		if a.input.Text != "" {
+			a.local(b.Server, b.Target, model.KindSystem, "Clear the current input before restoring the paste.")
+			return
+		}
+		a.input.Text = strings.Join(batch.remaining, "\n")
+		a.input.Cursor = len([]rune(a.input.Text))
+		a.pasteLiteral = true
+		a.state.Select(batch.server, batch.target)
+		a.pasteSend = nil
+	case "discard":
+		if batch.active {
+			a.local(b.Server, b.Target, model.KindSystem, "Cancel the paste and wait for the current line first.")
+			return
+		}
+		a.pasteSend = nil
+	default:
+		a.local(b.Server, b.Target, model.KindSystem, fmt.Sprintf("Paste to %s: %d/%d confirmed. /paste cancel | restore | discard", batch.target, batch.confirmed, len(batch.lines)))
 	}
 }

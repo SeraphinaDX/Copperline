@@ -65,6 +65,7 @@ type Session struct {
 	desired bool
 	running bool
 	ready   atomic.Bool
+	sendMu  sync.Mutex
 }
 
 var defaultCaps = []string{
@@ -351,6 +352,17 @@ func (m *Manager) DisconnectServer(name, reason string) error {
 }
 
 func (m *Manager) SendMessage(server, target, text string) error {
+	session, err := m.session(server)
+	if err != nil {
+		return err
+	}
+	// Do not accumulate concurrent rate-limit sleeps against the shared IRC
+	// connection. A caller can retain its draft and retry once this send finishes.
+	if !session.sendMu.TryLock() {
+		return errors.New("another message is being sent on this IRC server; try again shortly")
+	}
+	defer session.sendMu.Unlock()
+
 	c, err := m.client(server)
 	if err != nil {
 		return err
@@ -514,6 +526,17 @@ func (m *Manager) SendCTCP(server, target, command, text string) error {
 }
 
 func (m *Manager) SendAction(server, target, text string) error {
+	session, err := m.session(server)
+	if err != nil {
+		return err
+	}
+	// Do not accumulate concurrent rate-limit sleeps against the shared IRC
+	// connection. A caller can retain its draft and retry once this send finishes.
+	if !session.sendMu.TryLock() {
+		return errors.New("another message is being sent on this IRC server; try again shortly")
+	}
+	defer session.sendMu.Unlock()
+
 	c, err := m.client(server)
 	if err != nil {
 		return err
@@ -528,6 +551,17 @@ func (m *Manager) SendAction(server, target, text string) error {
 }
 
 func (m *Manager) Notice(server, target, text string) error {
+	session, err := m.session(server)
+	if err != nil {
+		return err
+	}
+	// Do not accumulate concurrent rate-limit sleeps against the shared IRC
+	// connection. A caller can retain its draft and retry once this send finishes.
+	if !session.sendMu.TryLock() {
+		return errors.New("another message is being sent on this IRC server; try again shortly")
+	}
+	defer session.sendMu.Unlock()
+
 	c, err := m.client(server)
 	if err != nil {
 		return err
