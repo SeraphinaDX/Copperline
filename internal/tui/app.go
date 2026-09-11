@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
@@ -54,6 +55,9 @@ type App struct {
 	relayReconnectDone chan relayReconnectResult
 	relayReconnecting  atomic.Bool
 	typingInFlight     atomic.Bool
+	pasteLiteral       bool
+	pasteSend          *pasteSend
+	pasteResults       chan pasteSendResult
 
 	sidebar      *widgets.List
 	transcript   *transcriptList
@@ -264,7 +268,18 @@ func (a *App) Run() error {
 	defer func() { a.irc.Stop("Copperline exiting") }()
 	a.irc.Start()
 	a.render()
-	events := ui.PollEvents()
+	eventCtx, stopEvents := context.WithCancel(context.Background())
+	defer stopEvents()
+	defer func() {
+		if a.pasteSend != nil && a.pasteSend.cancel != nil {
+			a.pasteSend.cancel()
+		}
+	}()
+	screen := ui.DefaultBackend.Screen
+	screen.EnablePaste()
+	defer screen.DisablePaste()
+	adapted := &ui.Backend{Screen: &pasteScreen{Screen: screen, events: pasteEvents(eventCtx, screen.EventQ())}}
+	events := adapted.PollEventsWithContext(eventCtx)
 	// Typing-state maintenance still needs a small timer, but terminal redraws
 	// are event-driven. The old 100 ms full-render loop repeatedly copied and
 	// reformatted scrollback even when nothing changed, which made busy/long
@@ -274,12 +289,20 @@ func (a *App) Run() error {
 
 	for !a.stopped.Load() {
 		select {
-		case e := <-events:
+		case e, ok := <-events:
+			if !ok {
+				return nil
+			}
 			a.handleUIEvent(e)
 			if !a.copyMode {
 				a.render()
 			}
 		case <-a.redraw:
+			if !a.copyMode {
+				a.render()
+			}
+		case result := <-a.pasteResults:
+			a.finishPasteSend(result)
 			if !a.copyMode {
 				a.render()
 			}
@@ -505,7 +528,7 @@ func (a *App) refreshTypingIndicator() {
 	}
 	a.input.Title = title
 	a.input.Placeholder = placeholder
-	ui.Render(a.input)
+	ui.Render(a.inputForDisplay())
 }
 
 type startupProgress struct {

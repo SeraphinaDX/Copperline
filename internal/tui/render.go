@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"copperline/internal/model"
@@ -41,7 +42,8 @@ func (a *App) render() {
 	}
 	a.status.SetRect(0, h-1, statusRight, h)
 
-	items := []ui.Drawable{a.topic, a.transcript, a.input, a.status}
+	inputView := a.inputForDisplay()
+	items := []ui.Drawable{a.topic, a.transcript, inputView, a.status}
 	if left > 0 {
 		items = append(items, a.sidebar)
 	}
@@ -392,6 +394,19 @@ func (a *App) rebuildCurrent() {
 			digits += "_"
 		}
 		a.status.Text = fmt.Sprintf(" Jump to buffer: %s  Enter select  %s cancel ", digits, a.cfg.Keybindings.JumpCancel)
+		return
+	}
+	if a.pasteSend != nil {
+		batch := a.pasteSend
+		state := "sending"
+		if !batch.active {
+			state = "stopped; /paste restore or /paste discard"
+		}
+		a.status.Text = fmt.Sprintf(" Paste %s to %s: %d/%d confirmed; /paste cancel ", state, batch.target, batch.confirmed, len(batch.lines))
+		return
+	}
+	if a.pasteLiteral || strings.Contains(a.input.Text, "\n") {
+		a.status.Text = " Paste ready — Enter sends as text; edit normally or clear input "
 		return
 	}
 	if a.relayReconnecting.Load() {
