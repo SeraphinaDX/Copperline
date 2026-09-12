@@ -292,6 +292,28 @@ export LIBERA_IRC_PASSWORD='your-password-here'
 ./Copperline
 ```
 
+### Message date and time
+
+To show the date as well as the time, set `timestamp` in the existing `[general]` section of that machine's Copperline TOML configuration:
+
+```toml
+[general]
+timestamp = "2006-01-02 15:04:05"
+```
+
+Restart that Copperline client after saving. Messages display in the machine's local time, for example `2026-09-11 08:30:45`. Relay clients format their own timestamps, so you can enable dates on one machine while leaving the others unchanged; no relay-server configuration change is needed.
+
+The setting uses Go's reference-time layout: keep the literal reference date `2006-01-02` in the configuration rather than substituting today's date.
+
+| Layout | Display |
+| --- | --- |
+| `15:04` | Hours and minutes (default) |
+| `15:04:05` | Hours, minutes, and seconds |
+| `2006-01-02 15:04` | Date, hours, and minutes |
+| `2006-01-02 15:04:05` | Date and time with seconds |
+
+`[general].timestamp` controls the format used for displayed messages and newly written logs. `[theme].timestamp` controls the timestamp color. See [the configuration reference](CONFIGURATION.md#timestamp-format) for more configuration details.
+
 ### Native SSH relay mode
 
 Select the Copperline role in TOML:
