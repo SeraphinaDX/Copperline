@@ -32,6 +32,9 @@ type Message struct {
 	Kind           Kind
 	Tags           map[string]string
 	Mention        bool
+	// SuppressUnread keeps routine membership notices visible without treating
+	// them as conversation activity in the sidebar unread counter.
+	SuppressUnread bool `json:",omitempty"`
 	// Replay marks messages restored from a Copperline relay's retained
 	// history. The TUI displays them normally but does not re-log or
 	// re-notify them on every client attachment.
@@ -137,7 +140,13 @@ func (s *State) Add(msg Message) {
 		}
 		b.Messages = b.Messages[drop:]
 	}
-	b.Unread++
+	if !msg.SuppressUnread {
+		b.Unread++
+	} else if b.Unread == 0 && b.ReadTotal == b.Total-1 {
+		// Keep the read cursor past non-activity rows when nothing is unread so
+		// the catch-up marker appears immediately before the next real activity.
+		b.ReadTotal = b.Total
+	}
 }
 
 func (s *State) Select(server, target string) {
@@ -162,10 +171,23 @@ func (s *State) MarkReadThrough(server, target string, total uint64) {
 	if total > b.Total {
 		total = b.Total
 	}
-	if total > b.ReadTotal {
-		b.ReadTotal = total
+	if total <= b.ReadTotal {
+		return
 	}
-	b.Unread = int(b.Total - b.ReadTotal)
+	// Messages newer than the displayed snapshot are necessarily in the
+	// retained tail when total is within the current window. Count only those
+	// which represent activity; JOIN/PART/QUIT rows remain visible but unread.
+	start := b.Total - uint64(len(b.Messages))
+	if total < start {
+		return
+	}
+	b.ReadTotal = total
+	b.Unread = 0
+	for _, msg := range b.Messages[int(total-start):] {
+		if !msg.SuppressUnread {
+			b.Unread++
+		}
+	}
 }
 
 func (s *State) SelectKey(key string) bool {
