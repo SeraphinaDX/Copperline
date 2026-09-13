@@ -123,3 +123,38 @@ func TestContainsMessageDeduplicatesRelayReplay(t *testing.T) {
 		t.Fatal("state matched different message text")
 	}
 }
+
+func TestChannelTargetsAreCaseInsensitive(t *testing.T) {
+	s := New(100)
+	s.Ensure("oftc", "#C")
+	for i, target := range []string{"#c", "#C"} {
+		s.Add(Message{Server: "oftc", Target: target, Text: fmt.Sprint(i), Replay: i == 0})
+	}
+	infos, _ := s.SnapshotInfo()
+	if len(infos) != 1 || infos[0].Total != 2 || infos[0].Unread != 2 {
+		t.Fatalf("mixed-case live/replay traffic split buffers: %#v", infos)
+	}
+	for _, target := range []string{"#C", "#c"} {
+		b := s.Find("oftc", target)
+		if b == nil || len(b.Messages) != 2 {
+			t.Fatalf("Find(%q) = %#v", target, b)
+		}
+	}
+	s.MarkReadThrough("oftc", "#c", 1)
+	if b := s.Find("oftc", "#C"); b.Unread != 1 {
+		t.Fatalf("read count = %d", b.Unread)
+	}
+	s.Select("oftc", "#c")
+	if b := s.Current(); b.Unread != 0 || b.Total != 2 || b.Target != "#C" {
+		t.Fatalf("selection lost history, casing, or read state: %#v", b)
+	}
+	s.Ensure("other", "#c")
+	s.Ensure("OFTC", "#c")
+	s.Close("oftc", "#c")
+	if s.Find("oftc", "#C") != nil {
+		t.Fatal("closing alternate case left channel open")
+	}
+	if s.Find("other", "#C") == nil || s.Find("OFTC", "#C") == nil {
+		t.Fatal("merged separate server identifiers")
+	}
+}
