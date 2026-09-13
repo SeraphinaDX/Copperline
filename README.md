@@ -169,6 +169,10 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## Fixed in 0.2.8
+
+JOIN, PART, and QUIT notices remain visible in the transcript but no longer increment the unread activity number beside a buffer. Other events and messages continue to count normally. Update clients and the relay so this metadata survives relay delivery and retained-history restoration.
+
 ## Fixed in 0.2.7
 
 Channel buffer names now ignore capitalization: `#C` and `#c` share one transcript, unread count, and sidebar entry. This also applies when restoring relay history. Update and restart clients; update the relay as well so its retained history uses the same channel identity.

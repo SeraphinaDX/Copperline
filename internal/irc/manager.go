@@ -1013,7 +1013,7 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		return
 	case girc.JOIN:
 		if len(e.Params) > 0 && m.cfg.General.ShowJoinMessagesEnabled() {
-			m.emitMessage(model.Message{Time: when, Server: server, Target: e.Params[0], Kind: model.KindSystem, Text: source + " joined", Tags: tags})
+			m.emitMessage(model.Message{Time: when, Server: server, Target: e.Params[0], Kind: model.KindSystem, Text: source + " joined", Tags: tags, SuppressUnread: true})
 		}
 		return
 	case girc.PART:
@@ -1023,7 +1023,7 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 			if len(e.Params) > 1 {
 				text += " (" + e.Last() + ")"
 			}
-			m.emitMessage(model.Message{Time: when, Server: server, Target: e.Params[0], Kind: model.KindSystem, Text: text, Tags: tags})
+			m.emitMessage(model.Message{Time: when, Server: server, Target: e.Params[0], Kind: model.KindSystem, Text: text, Tags: tags, SuppressUnread: true})
 		}
 		return
 	case girc.KICK:
@@ -1065,7 +1065,7 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		return
 	case girc.QUIT:
 		m.clearTypingNick(server, source)
-		m.serverLine(server, model.KindSystem, source+" quit: "+e.Last())
+		m.emitMessage(model.Message{Time: when, Server: server, Target: "*server*", Kind: model.KindSystem, Text: source + " quit: " + e.Last(), Tags: tags, SuppressUnread: true})
 		return
 	case "FAIL", "WARN", "NOTE":
 		m.serverLine(server, model.KindSystem, e.Command+": "+e.Last())
