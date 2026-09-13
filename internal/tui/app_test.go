@@ -662,3 +662,24 @@ func TestLiveMessageReopensLocallyClosedBuffer(t *testing.T) {
 		t.Fatalf("live message did not reopen channel correctly: %#v", got)
 	}
 }
+
+func TestBackendSnapshotDoesNotDuplicateChannelCasing(t *testing.T) {
+	state := model.New(100)
+	state.Select("oftc", "#C")
+	state.Add(model.Message{Server: "oftc", Target: "#c", Text: "hello"})
+	app := &App{state: state, irc: &knownTargetsBackend{servers: map[string][]string{"oftc": {"#C", "#c"}}}, redraw: make(chan struct{}, 1)}
+	app.onBackendUpdate()
+	infos, _ := state.SnapshotInfo()
+	if len(infos) != 2 {
+		t.Fatalf("want server and single channel: %#v", infos)
+	}
+	if b := state.Find("oftc", "#C"); b.Total != 1 {
+		t.Fatalf("lost channel traffic: %#v", b)
+	}
+	app.closeBufferLocally("oftc", "#c")
+	state.Close("oftc", "#c")
+	app.onBackendUpdate()
+	if state.Find("oftc", "#C") != nil {
+		t.Fatal("snapshot reopened closed channel with different casing")
+	}
+}

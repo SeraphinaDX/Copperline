@@ -84,13 +84,10 @@ func New(maxLines int) *State {
 }
 
 func Key(server, target string) string {
-	// IRC nicknames are case-insensitive. Keep channel/server buffer spelling
-	// untouched, but canonicalize private-query targets so user-entered casing
-	// (for example "Leah") and server-provided casing ("leah") resolve to the
-	// same in-memory buffer.
-	if isQueryTarget(target) {
-		target = strings.ToLower(target)
-	}
+	// Channel names and nicknames are case-insensitive. Canonicalize the
+	// identity while preserving the original spelling in Buffer.Target.
+	// Server names are local configuration identifiers and stay unchanged.
+	target = strings.ToLower(target)
 	return server + "\x00" + target
 }
 
