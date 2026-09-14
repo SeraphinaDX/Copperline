@@ -142,6 +142,10 @@ name = "libera"
 host = "irc.libera.chat"
 port = 6697
 tls = true
+# Optional TLS client certificate for CertFP and SASL EXTERNAL. The
+# certificate and key may share one combined PEM file.
+# tls_cert_file = "~/.config/copperline/certs/libera.pem"
+# tls_key_file = "~/.config/copperline/certs/libera.pem"
 auto_connect = true
 nick = "myNick"
 channels = ["#go-nuts", "#linux"]

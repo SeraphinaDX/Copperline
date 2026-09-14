@@ -169,6 +169,10 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## New in 0.2.9
+
+Per-server `tls_cert_file` and `tls_key_file` settings enable TLS client certificates, CertFP, and SASL EXTERNAL. The two settings may point to the same combined PEM file. Invalid or incomplete certificate configuration is rejected with a clear server-specific error; see [CONFIGURATION.md](CONFIGURATION.md#liberachat-with-certfp-and-sasl-external) for the Libera.Chat setup and registration procedure.
+
 ## Fixed in 0.2.8
 
 JOIN, PART, and QUIT notices remain visible in the transcript but no longer increment the unread activity number beside a buffer. Other events and messages continue to count normally. Update clients and the relay so this metadata survives relay delivery and retained-history restoration.

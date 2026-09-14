@@ -179,3 +179,47 @@ func TestRelayReconnectConflictCheckedOnlyInClientMode(t *testing.T) {
 		t.Fatal("relay client accepted relay_reconnect conflict")
 	}
 }
+
+func TestTLSClientCertificateValidation(t *testing.T) {
+	base := ServerConfig{Name: "libera", Host: "irc.libera.chat", TLS: true}
+	tests := []struct {
+		name   string
+		server ServerConfig
+	}{
+		{"certificate without key", func() ServerConfig { s := base; s.TLSCertFile = "cert.pem"; return s }()},
+		{"key without certificate", func() ServerConfig { s := base; s.TLSKeyFile = "key.pem"; return s }()},
+		{"certificate without TLS", func() ServerConfig {
+			s := base
+			s.TLS = false
+			s.TLSCertFile, s.TLSKeyFile = "cert.pem", "key.pem"
+			return s
+		}()},
+		{"external without certificate", func() ServerConfig { s := base; s.SASL.Mechanism = "external"; return s }()},
+		{"external without TLS", func() ServerConfig {
+			s := base
+			s.TLS = false
+			s.TLSCertFile, s.TLSKeyFile = "cert.pem", "key.pem"
+			s.SASL.Mechanism = "external"
+			return s
+		}()},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Config{Servers: []ServerConfig{tc.server}}
+			cfg.applyDefaults()
+			if err := cfg.Validate(); err == nil {
+				t.Fatal("Validate accepted invalid TLS client-certificate configuration")
+			}
+		})
+	}
+
+	cfg := Config{Servers: []ServerConfig{{
+		Name: "libera", Host: "irc.libera.chat", TLS: true,
+		TLSCertFile: "cert.pem", TLSKeyFile: "key.pem",
+		SASL: SASL{Mechanism: "external"},
+	}}}
+	cfg.applyDefaults()
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("Validate rejected complete SASL EXTERNAL configuration: %v", err)
+	}
+}
