@@ -28,6 +28,8 @@ type Message struct {
 	Server         string
 	Target         string
 	Nick           string
+	User           string `json:",omitempty"`
+	Host           string `json:",omitempty"`
 	Text           string
 	Kind           Kind
 	Tags           map[string]string

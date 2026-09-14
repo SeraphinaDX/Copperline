@@ -53,7 +53,7 @@ func (a *App) execute(line string) {
 	case "unread":
 		a.selectNextUnread()
 	case "help":
-		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /ctcp /nick /topic /whois /raw /history /search /searchnext /searchprev /unread /markread /caps /dcc /paste /gotify /lua /close /quit")
+		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /ctcp /nick /topic /whois /ignore /raw /history /search /searchnext /searchprev /unread /markread /caps /dcc /paste /gotify /lua /close /quit")
 	case "server":
 		if arg1 == "" {
 			a.local(b.Server, b.Target, model.KindSystem, "servers: "+strings.Join(a.irc.ServerNames(), ", "))
@@ -150,6 +150,15 @@ func (a *App) execute(line string) {
 			}
 		} else {
 			a.local(b.Server, b.Target, model.KindError, "usage: /whois nick")
+		}
+	case "ignore":
+		lines, err := a.irc.ManageIgnore(b.Server, b.Target, rest)
+		if err != nil {
+			a.local(b.Server, b.Target, model.KindError, err.Error())
+			return
+		}
+		for _, output := range lines {
+			a.local(b.Server, b.Target, model.KindSystem, output)
 		}
 	case "raw", "quote":
 		if err := a.irc.Raw(b.Server, rest); err != nil {

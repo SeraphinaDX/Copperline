@@ -27,6 +27,7 @@ type Backend interface {
 	Nick(server, nick string) error
 	Topic(server, channel, text string) error
 	Whois(server, nick string) error
+	ManageIgnore(server, channel, command string) ([]string, error)
 	Raw(server, line string) error
 	RequestHistory(server, target string, limit int) error
 	MarkRead(server, target, msgid string) error

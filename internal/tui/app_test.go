@@ -618,6 +618,42 @@ type whoisBackend struct {
 	requestedNick   string
 }
 
+type ignoreBackend struct {
+	knownTargetsBackend
+	server  string
+	channel string
+	command string
+}
+
+func (b *ignoreBackend) SetMessageSink(func(model.Message)) {}
+func (b *ignoreBackend) SetEventSink(func(ircclient.Event)) {}
+func (b *ignoreBackend) SetUpdateSink(func())               {}
+func (b *ignoreBackend) ManageIgnore(server, channel, command string) ([]string, error) {
+	b.server, b.channel, b.command = server, channel, command
+	return []string{"ignored Alice [libera / all channels]"}, nil
+}
+
+func TestIgnoreOutputUsesCurrentBuffer(t *testing.T) {
+	disabled := false
+	cfg := &config.Config{
+		General:   config.GeneralConfig{HistoryLines: 100, Logging: &disabled},
+		Scripting: config.ScriptingConfig{Enabled: &disabled},
+	}
+	backend := &ignoreBackend{knownTargetsBackend: knownTargetsBackend{
+		servers: map[string][]string{"libera": {"#copperline"}},
+	}}
+	app := NewWithBackend(cfg, backend)
+	app.state.Select("libera", "#copperline")
+	app.execute("/ignore add Alice")
+	if backend.server != "libera" || backend.channel != "#copperline" || backend.command != "add Alice" {
+		t.Fatalf("ignore request = %q/%q/%q", backend.server, backend.channel, backend.command)
+	}
+	buffer := app.state.Find("libera", "#copperline")
+	if buffer == nil || len(buffer.Messages) != 1 || buffer.Messages[0].Text != "ignored Alice [libera / all channels]" {
+		t.Fatalf("ignore output was not routed to current buffer: %#v", buffer)
+	}
+}
+
 func (b *whoisBackend) SetMessageSink(func(model.Message)) {}
 func (b *whoisBackend) SetEventSink(func(ircclient.Event)) {}
 func (b *whoisBackend) SetUpdateSink(func())               {}

@@ -409,6 +409,10 @@ func (c *Client) Whois(server, nick string) error {
 	_, err := c.call("whois", frame{Server: server, Target: nick})
 	return err
 }
+func (c *Client) ManageIgnore(server, channel, command string) ([]string, error) {
+	resp, err := c.call("ignore", frame{Server: server, Target: channel, Text: command})
+	return resp.Lines, err
+}
 func (c *Client) Raw(server, line string) error {
 	_, err := c.call("raw", frame{Server: server, Text: line})
 	return err

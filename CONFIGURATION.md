@@ -33,6 +33,7 @@ user = "myNick"
 real_name = "Copperline User"
 logging = true
 log_dir = "~/.local/state/copperline/logs"
+ignore_file = "~/.config/copperline/ignores.toml"
 timestamp = "2006-01-02 15:04:05"
 mouse = true
 show_typing = true
@@ -173,6 +174,7 @@ Global defaults and client-wide behavior.
 | `real_name` | string | `"Copperline IRC Client"` | Default IRC real-name/GECOS field. Individual servers may override it. |
 | `logging` | bool | `true` | Enables or disables all on-disk IRC logging. In-memory buffer history is unaffected. |
 | `log_dir` | string | `"~/.local/state/copperline/logs"` | Root directory for IRC logs when logging is enabled. `~` and `~/...` are expanded. |
+| `ignore_file` | string | `"~/.config/copperline/ignores.toml"` | Persistent ignore-list file. Copperline creates it with `0600` permissions and updates it atomically. In relay mode, this setting belongs to the relay server. |
 | `timestamp` | string | `"15:04"` | Go time-layout string used for displayed messages and logs. |
 | `mouse` | bool | `false` | Enables gotui mouse handling, including clickable buffers, double-clickable nicks for private queries, and mouse-wheel scrollback. |
 | `show_typing` | bool | `true` | Shows incoming IRCv3 `+typing` indicators in the message input title when the server supports `message-tags`. |
@@ -182,6 +184,26 @@ Global defaults and client-wide behavior.
 | `input_history_limit` | integer | `10` | Maximum number of messages/commands remembered per buffer for Up/Down input history during the current session. `0` disables input history. Negative values are rejected. |
 | `log_backlog_lines` | integer | `10` | On the first visit to a channel buffer during a session, display this many persisted lines from before the current Copperline run in the muted theme color. Messages received during the current run always use normal live styling, even if the channel is first opened much later. Set to `0` to disable. |
 | `reconnect_seconds` | integer | `10` | Delay between reconnect attempts. Values `<= 0` are reset to `10`. |
+
+## Ignore list
+
+Ignore rules suppress matching chat messages, actions, notices, CTCP lines, typing indicators, and DCC offers before they enter history or trigger notifications. JOIN, PART, QUIT, KICK, topic, and other membership or moderation events remain visible and continue updating client state.
+
+```text
+/ignore                         list rules
+/ignore add Alice               ignore on the current network
+/ignore add bad*!*@*            wildcard nick/user/host mask
+/ignore add Alice --channel     restrict to the current channel
+/ignore add Alice --global      apply on every configured network
+/ignore add re:^bot[0-9]+$      use a Go/RE2 regular expression
+/ignore remove Alice            remove a unique mask by name
+/ignore remove 2                remove rule number 2
+/ignore clear                   remove every rule
+```
+
+Plain masks are case-insensitive and support `*`. Expressions prefixed with `re:` are also case-insensitive by default. Every command reports its result in the buffer where it was entered.
+
+Rules are stored separately from the main configuration so comments and formatting in `config.toml` are never rewritten. A relay server owns the list and shares its filtering behavior with every attached client. If the ignore file is invalid, Copperline reports the error and refuses to overwrite it.
 
 ## IRCv3 typing indicators
 

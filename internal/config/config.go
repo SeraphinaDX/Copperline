@@ -28,6 +28,7 @@ type GeneralConfig struct {
 	RealName          string `toml:"real_name"`
 	Logging           *bool  `toml:"logging"`
 	LogDir            string `toml:"log_dir"`
+	IgnoreFile        string `toml:"ignore_file"`
 	Timestamp         string `toml:"timestamp"`
 	Mouse             bool   `toml:"mouse"`
 	ShowTyping        *bool  `toml:"show_typing"`
@@ -455,6 +456,9 @@ func (c *Config) applyDefaults() {
 	}
 	if c.General.LogDir == "" {
 		c.General.LogDir = "~/.local/state/copperline/logs"
+	}
+	if c.General.IgnoreFile == "" {
+		c.General.IgnoreFile = "~/.config/copperline/ignores.toml"
 	}
 	c.Keybindings.applyDefaults()
 	c.Theme.applyDefaults()

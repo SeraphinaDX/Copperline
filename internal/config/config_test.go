@@ -35,6 +35,9 @@ func TestKeyBindingMatchesAltAliases(t *testing.T) {
 func TestApplyDefaultsAddsKeybindings(t *testing.T) {
 	cfg := Config{}
 	cfg.applyDefaults()
+	if cfg.General.IgnoreFile != "~/.config/copperline/ignores.toml" {
+		t.Fatalf("ignore file default = %q", cfg.General.IgnoreFile)
+	}
 	if cfg.Keybindings.UserListDown != "Alt+N" || cfg.Keybindings.UserListUp != "Alt+P" {
 		t.Fatalf("nick-list defaults = %q/%q, want Alt+N/Alt+P", cfg.Keybindings.UserListDown, cfg.Keybindings.UserListUp)
 	}
