@@ -158,7 +158,7 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Gotify notifications** for mentions and private messages without blocking IRC
 - **Persistent local logs** organized per network and buffer
 - **True-color theming** for nicks, message types, buffer state, borders, input, status areas, mentions, and more
-- **Traditional IRC usability** with nick lists, channel topics, CTCP, `/whois`, `/me`, `/notice`, `/raw`, and familiar slash commands
+- **Traditional IRC usability** with nick lists, channel topics, CTCP, `/whois`, persistent `/ignore` rules, `/me`, `/notice`, `/raw`, and familiar slash commands
 - **Fast buffer navigation** with numbered buffers, `F6` direct jumping, and configurable next/previous shortcuts
 - **Nickname completion** with channel-aware Tab completion and match cycling
 - **Mouse support** for scrollback, buffer selection, nick-list scrolling, private-query opening, and relay reconnect
@@ -168,6 +168,12 @@ Copperline also includes features that are often missing from smaller terminal I
 - **TOML configuration** with environment-variable support for passwords and tokens
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
+
+## New in 0.2.11
+
+`/ignore` provides a persistent, relay-aware ignore list with network, channel, and global scopes. Plain masks support case-insensitive `*` wildcards; advanced rules may use Go/RE2 expressions prefixed with `re:`. Ignored chat, actions, notices, typing indicators, CTCP lines, and DCC offers are removed before history and notifications, while membership and moderation state remains intact. Command results are displayed in the buffer where `/ignore` was entered.
+
+Common forms are `/ignore add Alice`, `/ignore add Alice --channel`, `/ignore add Alice --global`, `/ignore list`, `/ignore remove Alice`, `/ignore remove 2`, and `/ignore clear`. Rules live in `[general].ignore_file`, which defaults to `~/.config/copperline/ignores.toml`; relay users configure this on the relay server.
 
 ## Fixed in 0.2.10
 
@@ -510,6 +516,10 @@ Press `Alt-L` for bare/copy mode. Copperline temporarily hides the normal UI chr
 /nick newnick
 /topic new topic
 /whois nick
+/ignore [list]
+/ignore add mask [--channel|--global]
+/ignore remove number|mask
+/ignore clear
 /raw IRC COMMAND HERE
 /history [count]
 /search [text]

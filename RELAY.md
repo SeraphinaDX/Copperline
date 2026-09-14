@@ -193,6 +193,8 @@ When messages change, a background worker checkpoints at most once per second us
 
 Most existing Copperline commands work unchanged because the relay client exposes the same IRC backend operations as direct mode.
 
+`/ignore` is relay-owned: add, remove, list, and clear operations update the relay server's persistent ignore file, and matching traffic is suppressed before relay history, notifications, or attached clients receive it. Configure `[general].ignore_file` on the relay server; relay-client values are unused.
+
 Important distinction:
 
 - `/quit` in a relay **client** detaches that local Copperline process. It does **not** stop the relay's IRC connections.

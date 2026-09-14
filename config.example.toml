@@ -4,6 +4,8 @@ user = "myNick"
 real_name = "Copperline User"
 logging = true
 log_dir = "~/.local/state/copperline/logs"
+# Persistent ignore rules. In relay mode this belongs on the relay server.
+ignore_file = "~/.config/copperline/ignores.toml"
 timestamp = "15:04"
 mouse = true
 # IRCv3 +typing indicators. Disable send_typing if you prefer not to reveal

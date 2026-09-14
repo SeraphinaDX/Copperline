@@ -233,6 +233,7 @@ func (p *serverPeer) handleRequest(req frame) {
 	var err error
 	var result bool
 	var resultText string
+	var resultLines []string
 	m := p.server.irc
 
 	switch req.Action {
@@ -268,6 +269,8 @@ func (p *serverPeer) handleRequest(req frame) {
 		err = m.Topic(req.Server, req.Target, req.Text)
 	case "whois":
 		err = m.Whois(req.Server, req.Target)
+	case "ignore":
+		resultLines, err = m.ManageIgnore(req.Server, req.Target, req.Text)
 	case "raw":
 		err = m.Raw(req.Server, req.Text)
 	case "history":
@@ -284,7 +287,7 @@ func (p *serverPeer) handleRequest(req frame) {
 		err = fmt.Errorf("unknown relay action %q", req.Action)
 	}
 
-	resp := frame{Type: "response", ID: req.ID, Text: resultText, Bool: result}
+	resp := frame{Type: "response", ID: req.ID, Text: resultText, Lines: resultLines, Bool: result}
 	if err != nil {
 		resp.Error = err.Error()
 	}

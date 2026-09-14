@@ -18,19 +18,22 @@ import (
 )
 
 type Manager struct {
-	cfg          *config.Config
-	mu           sync.RWMutex
-	sessions     map[string]*Session
-	emit         func(model.Message)
-	dcc          *dcc.Manager
-	ctcpMu       sync.Mutex
-	recentCTCP   map[string]time.Time
-	typingMu     sync.Mutex
-	typing       map[string]typingEntry
-	typingSent   map[string]time.Time
-	eventSink    func(Event)
-	updateSink   func()
-	knownTargets map[string]map[string]struct{}
+	cfg           *config.Config
+	mu            sync.RWMutex
+	sessions      map[string]*Session
+	emit          func(model.Message)
+	dcc           *dcc.Manager
+	ctcpMu        sync.Mutex
+	recentCTCP    map[string]time.Time
+	typingMu      sync.Mutex
+	typing        map[string]typingEntry
+	typingSent    map[string]time.Time
+	eventSink     func(Event)
+	updateSink    func()
+	knownTargets  map[string]map[string]struct{}
+	ignoreMu      sync.RWMutex
+	ignoreRules   []ignoreRule
+	ignoreLoadErr error
 }
 
 type Event struct {
@@ -113,6 +116,7 @@ func New(cfg *config.Config, emit func(model.Message)) *Manager {
 			m.emitMessage(model.Message{Time: time.Now(), Server: e.Server, Target: e.Peer, Nick: "", Text: e.Text, Kind: model.KindDCC})
 		},
 	)
+	m.ignoreRules, m.ignoreLoadErr = loadIgnoreRules(config.ExpandPath(cfg.General.IgnoreFile))
 	for _, sc := range cfg.Servers {
 		s := &Session{cfg: sc, desired: sc.AutoConnect}
 		s.client, s.setupErr = m.newClient(sc)
@@ -191,9 +195,12 @@ func (m *Manager) installHandlers(server string, c *girc.Client) {
 			if ce.Source == nil {
 				return
 			}
+			if m.matchesIgnoreIdentity(server, ce.Source.Name, ce.Source.Name, ce.Source.Ident, ce.Source.Host) {
+				return
+			}
 			offer, err := m.dcc.ParseOffer(server, ce.Source.Name, ce.Text)
 			if err != nil {
-				m.emitMessage(model.Message{Time: time.Now(), Server: server, Target: ce.Source.Name, Kind: model.KindError, Text: "DCC: " + err.Error()})
+				m.emitMessage(model.Message{Time: time.Now(), Server: server, Target: ce.Source.Name, Nick: ce.Source.Name, User: ce.Source.Ident, Host: ce.Source.Host, Kind: model.KindError, Text: "DCC: " + err.Error()})
 				return
 			}
 			text := "incoming DCC " + string(offer.Kind)
@@ -201,7 +208,7 @@ func (m *Manager) installHandlers(server string, c *girc.Client) {
 				text += fmt.Sprintf(" %s (%d bytes)", offer.Filename, offer.Size)
 			}
 			text += " — use /dcc accept " + ce.Source.Name
-			m.emitMessage(model.Message{Time: time.Now(), Server: server, Target: ce.Source.Name, Kind: model.KindDCC, Text: text})
+			m.emitMessage(model.Message{Time: time.Now(), Server: server, Target: ce.Source.Name, Nick: ce.Source.Name, User: ce.Source.Ident, Host: ce.Source.Host, Kind: model.KindDCC, Text: text})
 		})
 	}
 }
@@ -278,6 +285,9 @@ func (m *Manager) emitUpdate() {
 
 func (m *Manager) Start() {
 	for _, name := range m.ServerNames() {
+		if m.ignoreLoadErr != nil {
+			m.serverLine(name, model.KindError, "ignore list: "+m.ignoreLoadErr.Error())
+		}
 		m.mu.RLock()
 		s := m.sessions[name]
 		m.mu.RUnlock()
@@ -934,8 +944,10 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 	}
 	tags := tagsMap(e.Tags)
 	source := "server"
+	user, host := "", ""
 	if e.Source != nil && e.Source.Name != "" {
 		source = e.Source.Name
+		user, host = e.Source.Ident, e.Source.Host
 	}
 	rawEvent := Event{
 		Time:    when,
@@ -976,6 +988,9 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		if strings.EqualFold(target, c.GetNick()) {
 			target = source
 		}
+		if m.matchesIgnoreIdentity(server, target, source, user, host) {
+			return
+		}
 		m.setTyping(server, target, source, typingState, time.Now())
 		return
 	case girc.PRIVMSG:
@@ -994,7 +1009,7 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 						c.Cmd.SendCTCPReply(source, girc.CTCP_TIME, ":"+time.Now().Format(time.RFC1123Z))
 					}
 				}
-				m.emitMessage(model.Message{Time: when, Server: server, Target: source, Nick: source, Text: "CTCP " + ctcp.Command + " " + ctcp.Text, Kind: model.KindSystem, Tags: tags})
+				m.emitMessage(model.Message{Time: when, Server: server, Target: source, Nick: source, User: user, Host: host, Text: "CTCP " + ctcp.Command + " " + ctcp.Text, Kind: model.KindSystem, Tags: tags})
 				return
 			}
 		}
@@ -1012,7 +1027,7 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 			kind = model.KindAction
 			text = e.StripAction()
 		}
-		m.emitMessage(model.Message{Time: when, Server: server, Target: target, Nick: source, Text: text, Kind: kind, Tags: tags})
+		m.emitMessage(model.Message{Time: when, Server: server, Target: target, Nick: source, User: user, Host: host, Text: text, Kind: kind, Tags: tags})
 		return
 	case girc.NOTICE:
 		if len(e.Params) < 2 {
@@ -1023,7 +1038,7 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 			if strings.TrimSpace(ctcp.Text) != "" {
 				text += ": " + ctcp.Text
 			}
-			m.emitMessage(model.Message{Time: when, Server: server, Target: source, Nick: source, Text: text, Kind: model.KindSystem, Tags: tags})
+			m.emitMessage(model.Message{Time: when, Server: server, Target: source, Nick: source, User: user, Host: host, Text: text, Kind: model.KindSystem, Tags: tags})
 			return
 		}
 		target := e.Params[0]
@@ -1031,7 +1046,7 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 			target = source
 		}
 		m.clearTyping(server, target, source)
-		m.emitMessage(model.Message{Time: when, Server: server, Target: target, Nick: source, Text: e.Last(), Kind: model.KindNotice, Tags: tags})
+		m.emitMessage(model.Message{Time: when, Server: server, Target: target, Nick: source, User: user, Host: host, Text: e.Last(), Kind: model.KindNotice, Tags: tags})
 		return
 	case girc.JOIN:
 		if len(e.Params) > 0 && m.cfg.General.ShowJoinMessagesEnabled() {
@@ -1224,6 +1239,9 @@ func (m *Manager) serverLine(server string, kind model.Kind, text string) {
 }
 
 func (m *Manager) emitMessage(msg model.Message) {
+	if m.shouldIgnore(msg) {
+		return
+	}
 	m.rememberTarget(msg.Server, msg.Target)
 	m.mu.RLock()
 	sink := m.emit

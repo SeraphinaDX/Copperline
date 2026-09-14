@@ -18,12 +18,13 @@ type frame struct {
 	Error   string `json:"error,omitempty"`
 	Bool    bool   `json:"bool,omitempty"`
 
-	Server string `json:"server,omitempty"`
-	Target string `json:"target,omitempty"`
-	Text   string `json:"text,omitempty"`
-	Extra  string `json:"extra,omitempty"`
-	Limit  int    `json:"limit,omitempty"`
-	Peer   string `json:"peer,omitempty"`
+	Server string   `json:"server,omitempty"`
+	Target string   `json:"target,omitempty"`
+	Text   string   `json:"text,omitempty"`
+	Extra  string   `json:"extra,omitempty"`
+	Limit  int      `json:"limit,omitempty"`
+	Peer   string   `json:"peer,omitempty"`
+	Lines  []string `json:"lines,omitempty"`
 
 	Message  *model.Message     `json:"message,omitempty"`
 	Messages []model.Message    `json:"messages,omitempty"`
