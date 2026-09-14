@@ -169,6 +169,10 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## Fixed in 0.2.10
+
+`/whois nick` now displays readable WHOIS details in the buffer where the command was entered. Responses work in direct and relay-client modes, including account, idle time, channels, secure-connection status, and CertFP information. Raw WHOIS events remain available to Lua scripts.
+
 ## New in 0.2.9
 
 Per-server `tls_cert_file` and `tls_key_file` settings enable TLS client certificates, CertFP, and SASL EXTERNAL. The two settings may point to the same combined PEM file. Invalid or incomplete certificate configuration is rejected with a clear server-specific error; see [CONFIGURATION.md](CONFIGURATION.md#liberachat-with-certfp-and-sasl-external) for the Libera.Chat setup and registration procedure.

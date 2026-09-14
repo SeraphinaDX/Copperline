@@ -108,6 +108,8 @@ type App struct {
 	connectionMu     sync.Mutex
 	connectionSeen   map[string]bool
 	reconnectPending map[string]bool
+	whoisMu          sync.Mutex
+	pendingWhois     map[string]pendingWhoisRequest
 
 	closedBuffersMu sync.RWMutex
 	closedBuffers   map[string]bool
@@ -425,6 +427,7 @@ func (a *App) onIRCEvent(ev ircclient.Event) {
 		a.startupLastActivity.Store(time.Now().UnixNano())
 	}
 	a.handleConnectionFeedback(ev)
+	a.handleWhoisReply(ev)
 
 	if a.scripts != nil {
 		a.scripts.EmitEvent(scripting.Event{
