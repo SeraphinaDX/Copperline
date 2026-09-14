@@ -622,6 +622,8 @@ channels = ["#debian"]
 | `port` | integer | `6697` with TLS, otherwise `6667` | TCP port. The default is selected after reading `tls`. |
 | `tls` | bool | `false` | Connect using TLS. |
 | `skip_verify` | bool | `false` | Disable TLS certificate verification. Strongly discouraged except for controlled testing. |
+| `tls_cert_file` | string | empty | PEM TLS client certificate used for CertFP/SASL EXTERNAL. |
+| `tls_key_file` | string | empty | PEM private key matching `tls_cert_file`. May name the same combined PEM file. |
 | `password` | string | empty | Traditional IRC `PASS` password. This is not SASL. |
 | `password_env` | string | empty | Name of an environment variable containing the IRC `PASS` password. |
 | `nick` | string | `[general].nick` | Per-server nickname override. |
@@ -782,15 +784,23 @@ TLS and SASL are independent. `tls = true` does not require SASL.
 
 ## SASL EXTERNAL
 
-Copperline recognizes:
+Copperline can present a TLS client certificate and authenticate with SASL EXTERNAL:
 
 ```toml
+[[server]]
+name = "libera"
+host = "irc.libera.chat"
+tls = true
+tls_cert_file = "~/.config/copperline/certs/libera.pem"
+tls_key_file = "~/.config/copperline/certs/libera.pem"
+
 [server.sasl]
 mechanism = "external"
-identity = "myIdentity"
 ```
 
-However, the current TOML schema does **not** expose TLS client-certificate/key paths. Therefore SASL EXTERNAL is recognized by the IRC layer but is not yet fully configurable for the common client-certificate workflow. SASL PLAIN is the fully configurable SASL mechanism in the current release.
+Both certificate paths are required and `tls = true` must be enabled. The certificate and private key may be stored separately or together in one PEM file as shown above. `identity` is optional and normally omitted so the server selects the account associated with the certificate fingerprint.
+
+A missing, unreadable, malformed, or mismatched certificate/key prevents that server from connecting and produces a server-specific connection error.
 
 Unknown SASL mechanism names are not configured.
 
@@ -857,6 +867,7 @@ Copperline expands `~` and paths beginning with `~/` for:
 
 - `[general].log_dir`
 - `[dcc].download_dir`
+- each `[[server]]` entry's `tls_cert_file` and `tls_key_file`
 - file paths passed to DCC SEND through Copperline
 
 Example:
@@ -906,6 +917,43 @@ mechanism = "plain"
 username = "myNick"
 password_env = "LIBERA_IRC_PASSWORD"
 ```
+
+## Libera.Chat with CertFP and SASL EXTERNAL
+
+Create a private certificate and protect the combined PEM file:
+
+```bash
+mkdir -p ~/.config/copperline/certs
+openssl req -x509 -new -newkey ed25519 -sha256 -nodes -days 3650 \
+  -subj "/CN=Copperline" \
+  -out ~/.config/copperline/certs/libera.pem \
+  -keyout ~/.config/copperline/certs/libera.pem
+chmod 600 ~/.config/copperline/certs/libera.pem
+```
+
+First configure `tls_cert_file` and `tls_key_file` while retaining your working SASL PLAIN settings. After restarting and connecting as an identified user, register the certificate currently presented by Copperline:
+
+```text
+/msg NickServ CERT ADD
+```
+
+Then replace the SASL PLAIN settings with SASL EXTERNAL and remove `username`, `password`, and `password_env`:
+
+```toml
+[[server]]
+name = "libera"
+host = "irc.libera.chat"
+tls = true
+tls_cert_file = "~/.config/copperline/certs/libera.pem"
+tls_key_file = "~/.config/copperline/certs/libera.pem"
+auto_connect = true
+channels = ["#linux"]
+
+[server.sasl]
+mechanism = "external"
+```
+
+Restart Copperline. The PEM file now grants access to the NickServ account, so keep it private and back it up securely. In relay mode, configure and store it on the relay server because that process owns the IRC connection.
 
 ## Multiple networks
 
@@ -959,7 +1007,6 @@ The following are not currently configurable in TOML:
 - per-channel log directories
 - log rotation
 - proxy/SOCKS settings
-- TLS client certificate/key files
 - channel keys in the autojoin list
 - disabling individual built-in IRCv3 capabilities
 - UI panel sizes/layout

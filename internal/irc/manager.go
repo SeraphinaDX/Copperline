@@ -59,13 +59,14 @@ type typingEntry struct {
 }
 
 type Session struct {
-	cfg     config.ServerConfig
-	client  *girc.Client
-	mu      sync.Mutex
-	desired bool
-	running bool
-	ready   atomic.Bool
-	sendMu  sync.Mutex
+	cfg      config.ServerConfig
+	client   *girc.Client
+	setupErr error
+	mu       sync.Mutex
+	desired  bool
+	running  bool
+	ready    atomic.Bool
+	sendMu   sync.Mutex
 }
 
 var defaultCaps = []string{
@@ -114,7 +115,10 @@ func New(cfg *config.Config, emit func(model.Message)) *Manager {
 	)
 	for _, sc := range cfg.Servers {
 		s := &Session{cfg: sc, desired: sc.AutoConnect}
-		s.client = m.newClient(sc)
+		s.client, s.setupErr = m.newClient(sc)
+		if s.setupErr != nil {
+			s.desired = false
+		}
 		m.sessions[sc.Name] = s
 		for _, target := range sc.Channels {
 			m.rememberTarget(sc.Name, target)
@@ -123,7 +127,7 @@ func New(cfg *config.Config, emit func(model.Message)) *Manager {
 	return m
 }
 
-func (m *Manager) newClient(sc config.ServerConfig) *girc.Client {
+func (m *Manager) newClient(sc config.ServerConfig) (*girc.Client, error) {
 	caps := make(map[string][]string)
 	for _, capName := range append(append([]string{}, defaultCaps...), sc.Caps...) {
 		capName = strings.TrimSpace(capName)
@@ -144,10 +148,22 @@ func (m *Manager) newClient(sc config.ServerConfig) *girc.Client {
 		PingDelay:     20 * time.Second,
 		PingTimeout:   15 * time.Second,
 	}
+	var setupErr error
 	if sc.TLS {
-		gc.TLSConfig = &tls.Config{ServerName: sc.Host, InsecureSkipVerify: sc.SkipVerify, MinVersion: tls.VersionTLS12} //nolint:gosec
+		tlsConfig := &tls.Config{ServerName: sc.Host, InsecureSkipVerify: sc.SkipVerify, MinVersion: tls.VersionTLS12} //nolint:gosec
+		certFile := strings.TrimSpace(sc.TLSCertFile)
+		keyFile := strings.TrimSpace(sc.TLSKeyFile)
+		if certFile != "" && keyFile != "" {
+			certificate, err := tls.LoadX509KeyPair(config.ExpandPath(certFile), config.ExpandPath(keyFile))
+			if err != nil {
+				setupErr = fmt.Errorf("load TLS client certificate: %w", err)
+			} else {
+				tlsConfig.Certificates = []tls.Certificate{certificate}
+			}
+		}
+		gc.TLSConfig = tlsConfig
 	}
-	switch strings.ToLower(sc.SASL.Mechanism) {
+	switch strings.ToLower(strings.TrimSpace(sc.SASL.Mechanism)) {
 	case "plain":
 		gc.SASL = &girc.SASLPlain{User: sc.SASL.Username, Pass: config.Secret(sc.SASL.Password, sc.SASL.PasswordEnv)}
 	case "external":
@@ -155,7 +171,7 @@ func (m *Manager) newClient(sc config.ServerConfig) *girc.Client {
 	}
 	c := girc.New(gc)
 	m.installHandlers(sc.Name, c)
-	return c
+	return c, setupErr
 }
 
 func (m *Manager) installHandlers(server string, c *girc.Client) {
@@ -266,7 +282,9 @@ func (m *Manager) Start() {
 		s := m.sessions[name]
 		m.mu.RUnlock()
 		if s != nil && s.cfg.AutoConnect {
-			_ = m.ConnectServer(name)
+			if err := m.ConnectServer(name); err != nil {
+				m.serverLine(name, model.KindError, "connection error: "+err.Error())
+			}
 		}
 	}
 }
@@ -290,6 +308,9 @@ func (m *Manager) ConnectServer(name string) error {
 	s, err := m.session(name)
 	if err != nil {
 		return err
+	}
+	if s.setupErr != nil {
+		return fmt.Errorf("server %q: %w", name, s.setupErr)
 	}
 	s.mu.Lock()
 	s.desired = true

@@ -387,6 +387,8 @@ type ServerConfig struct {
 	Port        int      `toml:"port"`
 	TLS         bool     `toml:"tls"`
 	SkipVerify  bool     `toml:"skip_verify"`
+	TLSCertFile string   `toml:"tls_cert_file"`
+	TLSKeyFile  string   `toml:"tls_key_file"`
 	Password    string   `toml:"password"`
 	PasswordEnv string   `toml:"password_env"`
 	Nick        string   `toml:"nick"`
@@ -643,6 +645,22 @@ func (c *Config) Validate() error {
 		seen[s.Name] = true
 		if strings.TrimSpace(s.Host) == "" {
 			return fmt.Errorf("server %q has no host", s.Name)
+		}
+		hasCert := strings.TrimSpace(s.TLSCertFile) != ""
+		hasKey := strings.TrimSpace(s.TLSKeyFile) != ""
+		if hasCert != hasKey {
+			return fmt.Errorf("server %q must set both tls_cert_file and tls_key_file", s.Name)
+		}
+		if hasCert && !s.TLS {
+			return fmt.Errorf("server %q cannot use a TLS client certificate when tls is false", s.Name)
+		}
+		if strings.EqualFold(strings.TrimSpace(s.SASL.Mechanism), "external") {
+			if !s.TLS {
+				return fmt.Errorf("server %q requires tls = true for SASL EXTERNAL", s.Name)
+			}
+			if !hasCert {
+				return fmt.Errorf("server %q requires tls_cert_file and tls_key_file for SASL EXTERNAL", s.Name)
+			}
 		}
 	}
 	return nil
