@@ -169,6 +169,10 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## Fixed in 0.2.12
+
+IRC server connections now prefer IPv6 regardless of the DNS resolver's address ordering. Copperline starts with the server's IPv6 addresses, then begins an IPv4 fallback after 250 milliseconds so IPv4-only servers and networks with unavailable or broken IPv6 still connect promptly. An explicit IPv4 or IPv6 address in `host` continues to use that address family directly.
+
 ## New in 0.2.11
 
 `/ignore` provides a persistent, relay-aware ignore list with network, channel, and global scopes. Plain masks support case-insensitive `*` wildcards; advanced rules may use Go/RE2 expressions prefixed with `re:`. Ignored chat, actions, notices, typing indicators, CTCP lines, and DCC offers are removed before history and notifications, while membership and moderation state remains intact. Command results are displayed in the buffer where `/ignore` was entered.

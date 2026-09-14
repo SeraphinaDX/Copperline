@@ -349,7 +349,7 @@ func (m *Manager) connectionLoop(name string, s *Session) {
 			return
 		}
 		m.serverLine(name, model.KindSystem, fmt.Sprintf("connecting to %s:%d", s.cfg.Host, s.cfg.Port))
-		err := s.client.Connect()
+		err := s.client.DialerConnect(newIPv6FirstDialer())
 		s.mu.Lock()
 		desired = s.desired
 		s.mu.Unlock()
