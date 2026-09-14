@@ -160,3 +160,28 @@ func TestOnlyJoinPartAndQuitSuppressUnreadActivity(t *testing.T) {
 		}
 	}
 }
+
+func TestWhoisNumericUsesRawEventWithoutDuplicateServerMessage(t *testing.T) {
+	var events []Event
+	var messages []model.Message
+	m := &Manager{
+		cfg:          &config.Config{},
+		sessions:     make(map[string]*Session),
+		typing:       make(map[string]typingEntry),
+		knownTargets: make(map[string]map[string]struct{}),
+		eventSink:    func(ev Event) { events = append(events, ev) },
+		emit:         func(msg model.Message) { messages = append(messages, msg) },
+	}
+	c := girc.New(girc.Config{Server: "irc.test", Nick: "tester", User: "tester"})
+	m.handleEvent("test", c, girc.Event{
+		Command: girc.RPL_WHOISUSER,
+		Source:  &girc.Source{Name: "irc.test"},
+		Params:  []string{"tester", "alice", "user", "host.example", "*", "Alice Example"},
+	})
+	if len(events) != 1 || events[0].Command != girc.RPL_WHOISUSER {
+		t.Fatalf("WHOIS raw event = %#v", events)
+	}
+	if len(messages) != 0 {
+		t.Fatalf("WHOIS was also emitted as a generic server message: %#v", messages)
+	}
+}

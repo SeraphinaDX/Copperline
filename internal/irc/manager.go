@@ -937,14 +937,15 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 	if e.Source != nil && e.Source.Name != "" {
 		source = e.Source.Name
 	}
-	m.emitEvent(Event{
+	rawEvent := Event{
 		Time:    when,
 		Server:  server,
 		Command: e.Command,
 		Source:  source,
 		Params:  append([]string(nil), e.Params...),
 		Tags:    tags,
-	})
+	}
+	m.emitEvent(rawEvent)
 
 	switch e.Command {
 	case girc.CONNECTED:
@@ -1100,6 +1101,12 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 	// (including Lua), but do not add them to chat scrollback. Check this before
 	// Event.Pretty() as well so a library-provided pretty form cannot leak them.
 	if isChannelHousekeepingNumeric(e.Command) {
+		return
+	}
+
+	// WHOIS is request-specific UI output. It travels through the raw event
+	// sink so the requesting TUI can route it back to the originating buffer.
+	if _, ok := ParseWhoisReply(rawEvent); ok {
 		return
 	}
 

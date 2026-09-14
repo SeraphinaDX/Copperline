@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -610,6 +611,66 @@ func (b *knownTargetsBackend) KnownTargets(server string) []string {
 	return append([]string(nil), b.servers[server]...)
 }
 func (b *knownTargetsBackend) CurrentNick(string) string { return "britney" }
+
+type whoisBackend struct {
+	knownTargetsBackend
+	requestedServer string
+	requestedNick   string
+}
+
+func (b *whoisBackend) SetMessageSink(func(model.Message)) {}
+func (b *whoisBackend) SetEventSink(func(ircclient.Event)) {}
+func (b *whoisBackend) SetUpdateSink(func())               {}
+func (b *whoisBackend) Whois(server, nick string) error {
+	b.requestedServer, b.requestedNick = server, nick
+	return nil
+}
+
+func TestWhoisRepliesReturnToOriginatingBuffer(t *testing.T) {
+	disabled := false
+	cfg := &config.Config{
+		General:   config.GeneralConfig{HistoryLines: 100, Logging: &disabled},
+		Scripting: config.ScriptingConfig{Enabled: &disabled},
+	}
+	backend := &whoisBackend{knownTargetsBackend: knownTargetsBackend{
+		servers: map[string][]string{"libera": {"#copperline"}},
+	}}
+	app := NewWithBackend(cfg, backend)
+	app.state.Select("libera", "#copperline")
+	if err := app.requestWhois("libera", "#copperline", "Alice"); err != nil {
+		t.Fatal(err)
+	}
+	if backend.requestedServer != "libera" || backend.requestedNick != "Alice" {
+		t.Fatalf("WHOIS request = %q/%q", backend.requestedServer, backend.requestedNick)
+	}
+
+	for _, ev := range []ircclient.Event{
+		{Server: "libera", Command: "311", Params: []string{"me", "alice", "user", "host.example", "*", "Alice Example"}},
+		{Server: "libera", Command: "330", Params: []string{"me", "alice", "alice-account", "is logged in as"}},
+		{Server: "libera", Command: "671", Params: []string{"me", "alice", "is using a secure connection"}},
+		{Server: "libera", Command: "276", Params: []string{"me", "alice", "has client certificate fingerprint abc123"}},
+		{Server: "libera", Command: "318", Params: []string{"me", "alice", "End of /WHOIS list."}},
+	} {
+		app.onIRCEvent(ev)
+	}
+
+	channel := app.state.Find("libera", "#copperline")
+	if channel == nil || len(channel.Messages) != 6 {
+		t.Fatalf("WHOIS output was not routed to channel: %#v", channel)
+	}
+	if got := channel.Messages[2].Text; !strings.Contains(got, "logged in as alice-account") {
+		t.Fatalf("formatted WHOIS account line = %q", got)
+	}
+	if got := channel.Messages[4].Text; !strings.Contains(got, "certificate:") {
+		t.Fatalf("formatted CertFP line = %q", got)
+	}
+	if server := app.state.Find("libera", "*server*"); server == nil || len(server.Messages) != 0 {
+		t.Fatalf("requested WHOIS leaked into server buffer: %#v", server)
+	}
+	if len(app.pendingWhois) != 0 {
+		t.Fatalf("completed WHOIS remained pending: %#v", app.pendingWhois)
+	}
+}
 
 func TestClosedBufferIsNotResurrectedByBackendSnapshot(t *testing.T) {
 	state := model.New(100)

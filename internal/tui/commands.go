@@ -145,9 +145,11 @@ func (a *App) execute(line string) {
 		}
 	case "whois":
 		if arg1 != "" {
-			if err := a.irc.Whois(b.Server, arg1); err != nil {
+			if err := a.requestWhois(b.Server, b.Target, arg1); err != nil {
 				a.local(b.Server, b.Target, model.KindError, err.Error())
 			}
+		} else {
+			a.local(b.Server, b.Target, model.KindError, "usage: /whois nick")
 		}
 	case "raw", "quote":
 		if err := a.irc.Raw(b.Server, rest); err != nil {
