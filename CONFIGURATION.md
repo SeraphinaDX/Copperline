@@ -24,6 +24,8 @@ Copperline -config=/path/to/config.toml
 
 In normal `direct` mode and in `relay` `server` mode, Copperline requires at least one `[[server]]` entry. A relay `client` may omit `[[server]]` entirely because the IRC server/channel definitions live on the relay server. Every configured IRC server must have a unique non-empty `name` and a non-empty `host`.
 
+For hostnames with both AAAA and A records, Copperline prefers IPv6 and starts an IPv4 fallback after 250 milliseconds. This avoids making users wait through a full connection timeout when local IPv6 is unavailable. Setting `host` to an explicit IPv4 or IPv6 address selects that family directly.
+
 ## Complete example
 
 ```toml
