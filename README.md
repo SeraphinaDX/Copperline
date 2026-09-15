@@ -169,6 +169,10 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## Fixed in 0.2.13
+
+Nicknames containing IRC-valid square brackets now render literally in the user list. In particular, a nickname such as `[aruna]` no longer loses its closing bracket to gotui's inline-style parser.
+
 ## Fixed in 0.2.12
 
 IRC server connections now prefer IPv6 regardless of the DNS resolver's address ordering. Copperline starts with the server's IPv6 addresses, then begins an IPv4 fallback after 250 milliseconds so IPv4-only servers and networks with unavailable or broken IPv6 still connect promptly. An explicit IPv4 or IPv6 address in `host` continues to use that address family directly.

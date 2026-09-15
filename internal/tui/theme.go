@@ -103,6 +103,13 @@ func styled(text, color string) string {
 	// gotui uses [text](fg:color) markup. Do not wrap strings containing
 	// brackets, because IRC nicknames are allowed to contain them.
 	if strings.ContainsAny(text, "[]") {
+		// gotui's parser holds text after '[' while looking for a style suffix.
+		// If the row ends first, it drops the final rune (notably the closing
+		// bracket in "[aruna]"). A zero-width rune flushes the literal text
+		// without changing what the terminal displays.
+		if strings.ContainsRune(text, '[') {
+			return text + "\u200b"
+		}
 		return text
 	}
 	return fmt.Sprintf("[%s](fg:%s)", text, color)
