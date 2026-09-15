@@ -40,6 +40,9 @@ func (a *App) requestRelayReconnect() {
 	}()
 }
 
+// finishRelayReconnect runs on the UI side after the connection worker reports
+// back. Swap and bind the backend here so widgets keep their existing state
+// while subsequent messages and snapshots come from the new attachment.
 func (a *App) finishRelayReconnect(result relayReconnectResult) {
 	defer a.relayReconnecting.Store(false)
 	if result.err != nil {

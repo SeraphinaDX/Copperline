@@ -8,6 +8,8 @@ func (s *Server) deliverMessage(msg model.Message, self string) {
 	s.peersMu.Lock()
 	peers := make([]*serverPeer, 0, len(s.peers))
 	var owner *serverPeer
+	// If the relay does not notify, elect the oldest eligible attachment.
+	// Every peer still receives the message, but only one may send an alert.
 	for p := range s.peers {
 		peers = append(peers, p)
 		if p.notifications && (owner == nil || p.order < owner.order) {
@@ -19,6 +21,7 @@ func (s *Server) deliverMessage(msg model.Message, self string) {
 		s.notifier.NotifyMessage(s.cfg.Gotify, msg, self)
 	}
 	for _, p := range peers {
+		// Notification ownership is per delivery, not part of stored history.
 		copy := msg
 		copy.SuppressNotify = relayOwns || p != owner
 		_ = p.send(frame{Type: "message", Message: &copy})

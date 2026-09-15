@@ -21,6 +21,8 @@ type dialContextFunc func(context.Context, string, string) (net.Conn, error)
 // Go's default dialer races address families, but its preferred family follows
 // resolver ordering and therefore does not guarantee an IPv6-first attempt.
 type ipv6FirstDialer struct {
+	// Functions are injected so tests can simulate DNS order and unreachable
+	// networks without depending on the machine's real network configuration.
 	lookupIP      lookupIPFunc
 	dialContext   dialContextFunc
 	timeout       time.Duration
@@ -37,6 +39,8 @@ func newIPv6FirstDialer() *ipv6FirstDialer {
 	}
 }
 
+// Dial supplies the TCP connection to girc; girc still performs TLS and IRC
+// registration. Resolving an address here does not change the TLS server name.
 func (d *ipv6FirstDialer) Dial(network, address string) (net.Conn, error) {
 	if network != "tcp" {
 		ctx, cancel := context.WithTimeout(context.Background(), d.timeout)
@@ -64,6 +68,8 @@ func (d *ipv6FirstDialer) Dial(network, address string) (net.Conn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve IRC server %q: %w", host, err)
 	}
+	// Preserve resolver order within each family, but choose IPv6 as the
+	// preferred family. DNS and both connection attempts share one deadline.
 	var ipv6, ipv4 []string
 	for _, candidate := range resolved {
 		if candidate.IP == nil {
@@ -94,6 +100,9 @@ type dialResult struct {
 }
 
 func (d *ipv6FirstDialer) raceFamilies(ctx context.Context, ipv6, ipv4 []string) (net.Conn, error) {
+	// The unbuffered handoff transfers ownership of exactly one connection.
+	// Dial cancels ctx on return; any losing worker then closes its connection
+	// instead of leaving an unused socket in a buffered results channel.
 	results := make(chan dialResult)
 	start := func(network string, addresses []string) {
 		go func() {
@@ -124,6 +133,8 @@ func (d *ipv6FirstDialer) raceFamilies(ctx context.Context, ipv6, ipv4 []string)
 			}
 			dialErrors = append(dialErrors, result.err)
 			if !ipv4Started {
+				// IPv6 exhausted its addresses early; there is no reason to wait
+				// for the fallback timer before trying IPv4.
 				if !timer.Stop() {
 					select {
 					case <-timer.C:
@@ -148,6 +159,8 @@ func (d *ipv6FirstDialer) raceFamilies(ctx context.Context, ipv6, ipv4 []string)
 	return nil, fmt.Errorf("connect to IRC server: %w", errors.Join(dialErrors...))
 }
 
+// dialAddresses tries one family's addresses sequentially under the shared
+// deadline. A successful TCP connection is returned without reading IRC data.
 func (d *ipv6FirstDialer) dialAddresses(ctx context.Context, network string, addresses []string) (net.Conn, error) {
 	var dialErrors []error
 	for _, address := range addresses {

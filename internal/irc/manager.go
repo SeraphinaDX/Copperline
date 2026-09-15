@@ -17,6 +17,9 @@ import (
 	"github.com/lrstanley/girc"
 )
 
+// Manager owns IRC sessions in direct and relay-server modes. It translates
+// protocol events into messages and publishes state through the Backend API;
+// the TUI never needs to manipulate a girc connection directly.
 type Manager struct {
 	cfg           *config.Config
 	mu            sync.RWMutex
@@ -1239,6 +1242,8 @@ func (m *Manager) serverLine(server string, kind model.Kind, text string) {
 }
 
 func (m *Manager) emitMessage(msg model.Message) {
+	// Filter before remembering query targets or invoking the sink. The sink
+	// owns history/logging/notifications; filtering only in the TUI is too late.
 	if m.shouldIgnore(msg) {
 		return
 	}
