@@ -184,6 +184,8 @@ func (a *App) startPasteSend() {
 }
 
 func (a *App) runPasteSend(batch *pasteSend) {
+	// Freeze the backend and lines for this batch. Switching buffers or editing
+	// a new draft must not redirect or modify a paste that is already sending.
 	ctx, cancel := context.WithCancel(context.Background())
 	batch.cancel = cancel
 	backend := a.irc
@@ -220,6 +222,7 @@ func (a *App) runPasteSend(batch *pasteSend) {
 }
 
 func (a *App) finishPasteSend(r pasteSendResult) {
+	// Ignore a late result from a batch that the UI has already replaced.
 	if a.pasteSend != r.batch {
 		return
 	}

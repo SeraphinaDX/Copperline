@@ -96,6 +96,9 @@ func (t uiTheme) applyStatus(w *widgets.Paragraph) {
 	w.TextStyle = ui.Style{Fg: t.statusFG, Bg: t.statusBG, Modifier: ui.ModifierBold}
 }
 
+// styled builds display-only labels for gotui lists. Never use its return
+// value as an IRC target: it can contain markup or a zero-width parser marker.
+// Transcript messages use transcriptStyled and their own parser instead.
 func styled(text, color string) string {
 	if text == "" {
 		return ""

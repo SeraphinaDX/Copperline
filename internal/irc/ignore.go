@@ -20,6 +20,9 @@ const (
 	maxIgnoreMask  = 512
 )
 
+// ignoreRule stores user-entered scope and mask separately from its compiled
+// matcher. Empty Server means all networks; empty Channel means all targets,
+// including private messages. The unexported matcher is not written to TOML.
 type ignoreRule struct {
 	Mask    string `toml:"mask"`
 	Server  string `toml:"server,omitempty"`
@@ -31,6 +34,8 @@ type ignoreFile struct {
 	Rules []ignoreRule `toml:"ignore"`
 }
 
+// compileIgnoreMask treats ordinary masks literally except for '*'. Only the
+// explicit re: prefix enables regular-expression syntax and partial matching.
 func compileIgnoreMask(mask string) (*regexp.Regexp, error) {
 	if len(mask) == 0 {
 		return nil, errors.New("ignore mask cannot be empty")
@@ -54,6 +59,8 @@ func compileIgnoreMask(mask string) (*regexp.Regexp, error) {
 	return matcher, nil
 }
 
+// loadIgnoreRules validates the whole file before making any rule available.
+// A missing file is a new list; an invalid file is an error, not an empty list.
 func loadIgnoreRules(path string) ([]ignoreRule, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, nil
@@ -78,6 +85,9 @@ func loadIgnoreRules(path string) ([]ignoreRule, error) {
 	return stored.Rules, nil
 }
 
+// saveIgnoreRules writes beside the destination so rename can replace it
+// atomically. Callers hold ignoreMu and restore their previous in-memory rules
+// on failure, keeping acknowledged edits consistent with persisted state.
 func saveIgnoreRules(path string, rules []ignoreRule) error {
 	if strings.TrimSpace(path) == "" {
 		return nil
@@ -118,6 +128,9 @@ func saveIgnoreRules(path string, rules []ignoreRule) error {
 	return nil
 }
 
+// ManageIgnore executes the text after /ignore using the invoking buffer as
+// the default scope. Returning lines instead of broadcasting them lets direct
+// and relay clients display results only in the requesting client's buffer.
 func (m *Manager) ManageIgnore(server, channel, command string) ([]string, error) {
 	if m.ignoreLoadErr != nil {
 		return nil, m.ignoreLoadErr
@@ -294,6 +307,8 @@ func ignoreScope(rule ignoreRule) string {
 	return rule.Server + " / " + rule.Channel
 }
 
+// shouldIgnore filters conversation content, not membership/moderation state.
+// It does not erase messages already retained before a rule was added.
 func (m *Manager) shouldIgnore(msg model.Message) bool {
 	if msg.Nick == "" {
 		return false

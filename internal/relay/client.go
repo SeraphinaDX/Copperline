@@ -307,6 +307,8 @@ func (c *Client) callWithTimeout(action string, req frame, timeout time.Duration
 	req.Type = "request"
 	req.ID = id
 	req.Action = action
+	// Register before writing: a fast response must find its waiter. Buffer
+	// one result so the receive loop never waits for this caller to be scheduled.
 	waiter := make(chan frame, 1)
 	c.pendingMu.Lock()
 	c.pending[id] = waiter
