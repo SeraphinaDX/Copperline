@@ -158,7 +158,7 @@ func (m *Manager) newClient(sc config.ServerConfig) (*girc.Client, error) {
 		ServerPass:    config.Secret(sc.Password, sc.PasswordEnv),
 		SSL:           sc.TLS,
 		SupportedCaps: caps,
-		Version:       "Copperline by Britney Lozza",
+		Version:       m.cfg.General.CTCPVersionValue(),
 		PingDelay:     20 * time.Second,
 		PingTimeout:   15 * time.Second,
 	}
@@ -1012,8 +1012,8 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 			if ctcp != nil && !strings.EqualFold(ctcp.Command, "ACTION") {
 				switch strings.ToUpper(ctcp.Command) {
 				case girc.CTCP_VERSION:
-					if m.allowCTCPReply(server, *ctcp) {
-						c.Cmd.SendCTCPReply(source, girc.CTCP_VERSION, "Copperline by Britney Lozza")
+					if reply := m.cfg.General.CTCPVersionValue(); reply != "" && m.allowCTCPReply(server, *ctcp) {
+						c.Cmd.SendCTCPReply(source, girc.CTCP_VERSION, reply)
 					}
 				case girc.CTCP_TIME:
 					if m.allowCTCPReply(server, *ctcp) {

@@ -169,6 +169,19 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## New in 0.2.15
+
+Customize the text returned to `/ctcp yourNick VERSION` in your existing TOML configuration:
+
+```toml
+[general]
+ctcp_version = "My IRC client"
+```
+
+Omit `ctcp_version` to retain `Copperline by Britney Lozza`, or set it to `""` to disable VERSION replies. Leading/trailing whitespace is trimmed. The value must be a single line without NUL or CTCP delimiter characters. This changes only the CTCP VERSION response, not `--version` or other CTCP replies. Requests still appear in the conversation even when replies are disabled.
+
+In direct mode, configure your local client. In relay mode, configure the **relay server**, which sends the IRC replies; changing only an attached client's config has no effect. Restart the relevant instance after changing this setting.
+
 ## New in 0.2.14
 
 - **Per-buffer drafts:** channels, private conversations, and server buffers each retain their own unsent text, cursor position, and multiline paste state when you switch away. Drafts stay on the current machine for the current session and survive relay reconnects. Sending clears that buffer's draft; `/close` discards it.
