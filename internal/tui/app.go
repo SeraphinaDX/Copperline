@@ -82,6 +82,8 @@ type App struct {
 	transcriptBacklogRows int
 	transcriptCaches      map[string]transcriptCache
 	inputHistory          map[string]*inputHistoryState
+	inputKey              string
+	inputDrafts           map[string]inputDraft
 
 	nickCompletionMatches []string
 	nickCompletionIndex   int
@@ -185,6 +187,7 @@ func NewWithBackend(cfg *config.Config, backend ircclient.Backend) *App {
 	}
 	a.bindBackend(backend)
 	a.makeWidgets()
+	a.syncInputDraft()
 	return a
 }
 
@@ -371,7 +374,7 @@ func (a *App) onMessage(msg model.Message) {
 	self := ""
 	if msg.Kind == model.KindMessage || msg.Kind == model.KindAction {
 		self = a.irc.CurrentNick(msg.Server)
-		if self != "" && msg.Nick != "" && !strings.EqualFold(msg.Nick, self) && containsNickMention(msg.Text, self) {
+		if model.Highlight(msg, self, a.cfg.General.HighlightWords) {
 			msg.Mention = true
 		}
 	}

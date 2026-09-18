@@ -39,6 +39,9 @@ func (a *App) moveSearch(direction int) {
 	var matches []uint64
 	for i, msg := range w.Messages {
 		sequence := w.Start + uint64(i)
+		if sequence < a.transcriptStart {
+			continue
+		}
 		// Network delivery can advance state after rebuildCurrent took its
 		// snapshot. Search only rows actually present in that rendered snapshot.
 		if sequence >= a.transcriptTotal {

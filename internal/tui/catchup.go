@@ -23,7 +23,7 @@ func (a *App) selectNextUnread() {
 	for step := 1; step <= len(keys); step++ {
 		key := keys[(start+step)%len(keys)]
 		if key != current && unread[key] {
-			a.state.SelectKey(key)
+			a.selectBufferKey(key)
 			a.follow = false
 			a.resetNickCompletion()
 			return

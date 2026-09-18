@@ -181,7 +181,7 @@ func (a *App) selectBufferNumber(n int) bool {
 	if n < 1 || n > len(keys) {
 		return false
 	}
-	a.state.SelectKey(keys[n-1])
+	a.selectBufferKey(keys[n-1])
 	a.follow = true
 	return true
 }
@@ -200,7 +200,7 @@ func (a *App) selectRelative(delta int) {
 		}
 	}
 	idx = (idx + delta + len(keys)) % len(keys)
-	a.state.SelectKey(keys[idx])
+	a.selectBufferKey(keys[idx])
 	a.follow = true
 }
 

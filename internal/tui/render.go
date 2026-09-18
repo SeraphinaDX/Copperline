@@ -161,6 +161,7 @@ func (a *App) restoreTranscriptCache(key string) bool {
 }
 
 func (a *App) rebuildCurrent() {
+	a.syncInputDraft()
 	b := a.state.CurrentInfo()
 	if b == nil {
 		a.transcript.Rows = []string{"No buffer selected"}

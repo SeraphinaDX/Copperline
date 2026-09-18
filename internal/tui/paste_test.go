@@ -77,7 +77,7 @@ func (b *pasteBackend) SendMessage(_, _, text string) error {
 func TestPasteSendKeepsUIResponsiveAndRetainsFailure(t *testing.T) {
 	a := newCatchupApp(t)
 	server := a.irc.ServerNames()[0]
-	a.state.Select(server, "#chat")
+	a.selectBuffer(server, "#chat")
 	backend := &pasteBackend{calls: make(chan string, 8), release: make(chan struct{}), fail: true}
 	a.irc = backend
 	a.input.Text = "prefix "
@@ -130,7 +130,7 @@ func TestPasteSendKeepsUIResponsiveAndRetainsFailure(t *testing.T) {
 func TestPasteCancellationDoesNotSendRemainingLines(t *testing.T) {
 	a := newCatchupApp(t)
 	server := a.irc.ServerNames()[0]
-	a.state.Select(server, "#chat")
+	a.selectBuffer(server, "#chat")
 	backend := &pasteBackend{calls: make(chan string, 8), release: make(chan struct{})}
 	a.irc = backend
 	a.insertPaste("one\ntwo\nthree")

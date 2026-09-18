@@ -169,6 +169,29 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## New in 0.2.14
+
+- **Per-buffer drafts:** channels, private conversations, and server buffers each retain their own unsent text, cursor position, and multiline paste state when you switch away. Drafts stay on the current machine for the current session and survive relay reconnects. Sending clears that buffer's draft; `/close` discards it.
+- **`/clear`:** clears the current buffer's visible scrollback and unread marker. Other buffers, your input draft, log files, and relay history remain intact. Cleared rows stay hidden across buffer switches and relay reconnects in the same session. Restarting Copperline can load history again.
+- **Custom highlights:** add literal words or phrases alongside your nickname. Matches are case-insensitive, respect word boundaries, and apply to other users' messages and `/me` actions. They use the existing mention color and Gotify mention setting; your own messages do not trigger alerts.
+- **URL grabber:** optionally collect HTTP(S) links from messages, actions, and notices, including your own. Configure it on the relay server to collect while clients are disconnected, or on your local machine in direct mode.
+
+Add these settings to the existing sections of your TOML config:
+
+```toml
+[general]
+highlight_words = ["Copperline", "alternateNick", "server down"]
+
+[urls]
+file = "~/.local/state/copperline/urls.jsonl"
+```
+
+For relay-owned Gotify alerts, set `highlight_words` on the relay. Clients receive those highlight flags and can add local highlight words for display. Client-only words cannot trigger notifications owned by the relay. Restart the relevant instance after changing the config.
+
+URL collection is disabled when `urls.file` is blank or omitted. The file is append-only JSON Lines, with `time`, `server`, `target`, `nick`, and `url` on each line; timestamps include their timezone. Parent directories are created automatically. Links are never opened or fetched. Ignored messages and relay attachment replay are not collected. Each URL is saved only once across all buffers, keeping its first sender/channel/time. The saved file is indexed at startup, so duplicate suppression survives reconnects and restarts, including repeated IRC history. Scheme and hostname casing are ignored; paths, queries, and fragments remain distinct. Use a separate file for each collector process.
+
+URL writes run in a bounded background queue. Slow or failing storage cannot block IRC delivery; queue overflow drops links, and the first collection error appears in the first configured network's server buffer. Later messages retry writes. If an existing file cannot be read or contains malformed records, collection is disabled until the file is fixed and Copperline restarted, so it cannot append duplicates unknowingly. `/clear` does not erase collected URLs.
+
 ## Fixed in 0.2.13
 
 Nicknames containing IRC-valid square brackets now render literally in the user list. In particular, a nickname such as `[aruna]` no longer loses its closing bracket to gotui's inline-style parser.
