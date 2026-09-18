@@ -144,11 +144,13 @@ func userListScrollKeyDelta(id string, keys config.KeybindingsConfig) int {
 }
 
 func (a *App) handleKey(e ui.Event) {
+	a.syncInputDraft()
+	beforeKey := a.inputKey
 	id := e.ID
 	beforeText := a.input.Text
 	historyNavigation := false
 	defer func() {
-		if a.input.Text != beforeText {
+		if a.inputKey == beforeKey && a.input.Text != beforeText {
 			a.typingLastEdit = time.Now()
 			if !historyNavigation {
 				a.resetInputHistoryNavigation()
@@ -454,10 +456,7 @@ func (a *App) setInputText(text string) {
 // Any real edit leaves history-navigation mode. The entries remain available;
 // only the temporary cursor/draft state is reset.
 func (a *App) resetInputHistoryNavigation() {
-	for _, h := range a.inputHistory {
-		if h == nil {
-			continue
-		}
+	if h := a.inputHistoryCurrent(); h != nil {
 		h.index = len(h.entries)
 		h.draft = ""
 		h.active = false

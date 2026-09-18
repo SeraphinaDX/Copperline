@@ -6,6 +6,9 @@ logging = true
 log_dir = "~/.local/state/copperline/logs"
 # Persistent ignore rules. In relay mode this belongs on the relay server.
 ignore_file = "~/.config/copperline/ignores.toml"
+# Case-insensitive whole words/phrases, in addition to your nickname.
+# Configure on the relay server for relay-owned Gotify mention alerts.
+highlight_words = [] # e.g. ["Copperline", "alternateNick", "server down"]
 timestamp = "15:04"
 mouse = true
 # IRCv3 +typing indicators. Disable send_typing if you prefer not to reveal
@@ -21,6 +24,11 @@ input_history_limit = 10
 # query is opened. Set to 0 to disable the disk-backed conversation backlog.
 log_backlog_lines = 10
 reconnect_seconds = 10
+
+# Automatically append HTTP(S) links as JSON Lines (time/server/target/nick/url).
+# Blank disables collection. In relay mode, configure this on the relay server.
+[urls]
+file = "" # e.g. "~/.local/state/copperline/urls.jsonl"
 
 # Copperline can run normally (direct), as a headless IRC relay with its own
 # embedded SSH server (server), or as a local TUI attached to such a relay

@@ -42,6 +42,8 @@ func (a *App) execute(line string) {
 	arg1, tail := cutWord(rest)
 
 	switch cmd {
+	case "clear":
+		a.clearCurrent()
 	case "paste":
 		a.executePaste(rest)
 	case "search":
@@ -53,13 +55,13 @@ func (a *App) execute(line string) {
 	case "unread":
 		a.selectNextUnread()
 	case "help":
-		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /ctcp /nick /topic /whois /ignore /raw /history /search /searchnext /searchprev /unread /markread /caps /dcc /paste /gotify /lua /close /quit")
+		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /ctcp /nick /topic /whois /ignore /raw /history /clear /search /searchnext /searchprev /unread /markread /caps /dcc /paste /gotify /lua /close /quit")
 	case "server":
 		if arg1 == "" {
 			a.local(b.Server, b.Target, model.KindSystem, "servers: "+strings.Join(a.irc.ServerNames(), ", "))
 			return
 		}
-		a.state.Select(arg1, "*server*")
+		a.selectBuffer(arg1, "*server*")
 		a.follow = true
 	case "buffer", "buf":
 		if arg1 == "" {
@@ -94,7 +96,7 @@ func (a *App) execute(line string) {
 		key, _ := cutWord(tail)
 		a.reopenBuffer(b.Server, arg1)
 		a.state.Ensure(b.Server, arg1)
-		a.state.Select(b.Server, arg1)
+		a.selectBuffer(b.Server, arg1)
 		a.local(b.Server, arg1, model.KindSystem, "joining "+arg1+"...")
 		if err := a.irc.Join(b.Server, arg1, key); err != nil {
 			a.local(b.Server, arg1, model.KindError, err.Error())
@@ -116,7 +118,7 @@ func (a *App) execute(line string) {
 	case "query", "q":
 		if arg1 != "" {
 			a.reopenBuffer(b.Server, arg1)
-			a.state.Select(b.Server, arg1)
+			a.selectBuffer(b.Server, arg1)
 			a.follow = true
 		}
 	case "ctcp":
@@ -199,6 +201,9 @@ func (a *App) execute(line string) {
 			a.closeBufferLocally(b.Server, b.Target)
 			delete(a.transcriptCaches, model.Key(b.Server, b.Target))
 			a.state.Close(b.Server, b.Target)
+			a.syncInputDraft()
+			delete(a.inputDrafts, model.Key(b.Server, b.Target))
+			delete(a.inputHistory, model.Key(b.Server, b.Target))
 		}
 	case "quit", "exit":
 		a.irc.Stop(strings.TrimSpace(rest))
@@ -412,10 +417,15 @@ func (a *App) executePaste(sub string) {
 			a.local(b.Server, b.Target, model.KindSystem, "Clear the current input before restoring the paste.")
 			return
 		}
+		// Restoring a cancelled batch must never overwrite its target's draft.
+		a.selectBuffer(batch.server, batch.target)
+		if a.input.Text != "" {
+			a.local(batch.server, batch.target, model.KindSystem, "Clear this buffer's draft before restoring the paste.")
+			return
+		}
 		a.input.Text = strings.Join(batch.remaining, "\n")
 		a.input.Cursor = len([]rune(a.input.Text))
 		a.pasteLiteral = true
-		a.state.Select(batch.server, batch.target)
 		a.pasteSend = nil
 	case "discard":
 		if batch.active {

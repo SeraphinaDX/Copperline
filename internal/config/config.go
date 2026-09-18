@@ -20,24 +20,31 @@ type Config struct {
 	Scripting   ScriptingConfig   `toml:"scripting"`
 	Relay       RelayConfig       `toml:"relay"`
 	Servers     []ServerConfig    `toml:"server"`
+	URLs        URLConfig         `toml:"urls"`
+}
+
+// A blank file disables URL collection. Relay users configure this on the server.
+type URLConfig struct {
+	File string `toml:"file"`
 }
 
 type GeneralConfig struct {
-	Nick              string `toml:"nick"`
-	User              string `toml:"user"`
-	RealName          string `toml:"real_name"`
-	Logging           *bool  `toml:"logging"`
-	LogDir            string `toml:"log_dir"`
-	IgnoreFile        string `toml:"ignore_file"`
-	Timestamp         string `toml:"timestamp"`
-	Mouse             bool   `toml:"mouse"`
-	ShowTyping        *bool  `toml:"show_typing"`
-	SendTyping        *bool  `toml:"send_typing"`
-	ShowJoinMessages  *bool  `toml:"show_join_messages"`
-	HistoryLines      int    `toml:"history_lines"`
-	InputHistoryLimit *int   `toml:"input_history_limit"`
-	LogBacklogLines   *int   `toml:"log_backlog_lines"`
-	ReconnectSecs     int    `toml:"reconnect_seconds"`
+	Nick              string   `toml:"nick"`
+	User              string   `toml:"user"`
+	RealName          string   `toml:"real_name"`
+	Logging           *bool    `toml:"logging"`
+	LogDir            string   `toml:"log_dir"`
+	IgnoreFile        string   `toml:"ignore_file"`
+	HighlightWords    []string `toml:"highlight_words"`
+	Timestamp         string   `toml:"timestamp"`
+	Mouse             bool     `toml:"mouse"`
+	ShowTyping        *bool    `toml:"show_typing"`
+	SendTyping        *bool    `toml:"send_typing"`
+	ShowJoinMessages  *bool    `toml:"show_join_messages"`
+	HistoryLines      int      `toml:"history_lines"`
+	InputHistoryLimit *int     `toml:"input_history_limit"`
+	LogBacklogLines   *int     `toml:"log_backlog_lines"`
+	ReconnectSecs     int      `toml:"reconnect_seconds"`
 }
 
 // KeybindingsConfig controls the main navigation/action shortcuts. Core text

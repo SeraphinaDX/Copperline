@@ -13,6 +13,7 @@ import (
 	"copperline/internal/config"
 	"copperline/internal/dcc"
 	"copperline/internal/model"
+	"copperline/internal/urlgrab"
 
 	"github.com/lrstanley/girc"
 )
@@ -37,6 +38,7 @@ type Manager struct {
 	ignoreMu      sync.RWMutex
 	ignoreRules   []ignoreRule
 	ignoreLoadErr error
+	urls          *urlgrab.Collector
 }
 
 type Event struct {
@@ -131,6 +133,11 @@ func New(cfg *config.Config, emit func(model.Message)) *Manager {
 			m.rememberTarget(sc.Name, target)
 		}
 	}
+	m.urls = urlgrab.New(config.ExpandPath(cfg.URLs.File), func(err error) {
+		if len(cfg.Servers) > 0 {
+			m.serverLine(cfg.Servers[0].Name, model.KindError, "URL collection: "+err.Error()+" (further errors suppressed until restart)")
+		}
+	})
 	return m
 }
 
@@ -304,7 +311,6 @@ func (m *Manager) Start() {
 
 func (m *Manager) Stop(reason string) {
 	m.mu.RLock()
-	defer m.mu.RUnlock()
 	for _, s := range m.sessions {
 		s.mu.Lock()
 		s.desired = false
@@ -315,6 +321,8 @@ func (m *Manager) Stop(reason string) {
 			s.client.Close()
 		}
 	}
+	m.mu.RUnlock()
+	m.urls.Close()
 }
 
 func (m *Manager) ConnectServer(name string) error {
@@ -1247,6 +1255,8 @@ func (m *Manager) emitMessage(msg model.Message) {
 	if m.shouldIgnore(msg) {
 		return
 	}
+	msg.Mention = msg.Mention || model.Highlight(msg, m.CurrentNick(msg.Server), m.cfg.General.HighlightWords)
+	m.urls.Add(msg)
 	m.rememberTarget(msg.Server, msg.Target)
 	m.mu.RLock()
 	sink := m.emit

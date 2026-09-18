@@ -42,7 +42,7 @@ func (a *App) handleMouse(e ui.Event) {
 			a.clearNickClick()
 			row := m.Y - 1
 			if row >= 0 && row < len(a.sidebarKeys) {
-				if a.state.SelectKey(a.sidebarKeys[row]) {
+				if a.selectBufferKey(a.sidebarKeys[row]) {
 					a.follow = true
 				}
 			}
@@ -54,7 +54,7 @@ func (a *App) handleMouse(e ui.Event) {
 			if nick, ok := a.userNickAtVisibleRow(visibleRow); ok {
 				if b := a.state.CurrentInfo(); b != nil {
 					if a.nickDoubleClicked(b.Server, nick) {
-						a.state.Select(b.Server, nick)
+						a.selectBuffer(b.Server, nick)
 						a.follow = true
 					}
 					return
