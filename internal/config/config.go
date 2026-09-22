@@ -29,7 +29,6 @@ type URLConfig struct {
 }
 
 type GeneralConfig struct {
-	CTCPVersion       *string  `toml:"ctcp_version"`
 	Nick              string   `toml:"nick"`
 	User              string   `toml:"user"`
 	RealName          string   `toml:"real_name"`
@@ -46,15 +45,6 @@ type GeneralConfig struct {
 	InputHistoryLimit *int     `toml:"input_history_limit"`
 	LogBacklogLines   *int     `toml:"log_backlog_lines"`
 	ReconnectSecs     int      `toml:"reconnect_seconds"`
-}
-
-// Omission preserves the usual identification; an explicit empty value opts
-// out of VERSION replies. The relay owns this setting when it owns IRC.
-func (g GeneralConfig) CTCPVersionValue() string {
-	if g.CTCPVersion == nil {
-		return "Copperline by Britney Lozza"
-	}
-	return strings.TrimSpace(*g.CTCPVersion)
 }
 
 // KeybindingsConfig controls the main navigation/action shortcuts. Core text
@@ -587,9 +577,6 @@ func isReservedInputKey(canonical string) bool {
 }
 
 func (c *Config) Validate() error {
-	if c.General.CTCPVersion != nil && strings.ContainsAny(*c.General.CTCPVersion, "\r\n\x00\x01") {
-		return errors.New("[general].ctcp_version must be a single line without NUL or CTCP delimiters")
-	}
 	if c.General.InputHistoryLimit != nil && *c.General.InputHistoryLimit < 0 {
 		return errors.New("[general].input_history_limit cannot be negative")
 	}

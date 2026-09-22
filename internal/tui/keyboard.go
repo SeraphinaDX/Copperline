@@ -394,6 +394,11 @@ func (a *App) inputHistoryLimit() int {
 }
 
 func (a *App) addInputHistory(line string) {
+	cmd, _ := cutWord(strings.TrimPrefix(strings.TrimSpace(line), "/"))
+	if strings.HasPrefix(strings.TrimSpace(line), "/") && strings.EqualFold(cmd, "oper") {
+		a.resetInputHistoryNavigation()
+		return
+	}
 	h := a.inputHistoryCurrent()
 	limit := a.inputHistoryLimit()
 	if h == nil || line == "" || limit == 0 {

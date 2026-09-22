@@ -158,7 +158,7 @@ func (m *Manager) newClient(sc config.ServerConfig) (*girc.Client, error) {
 		ServerPass:    config.Secret(sc.Password, sc.PasswordEnv),
 		SSL:           sc.TLS,
 		SupportedCaps: caps,
-		Version:       m.cfg.General.CTCPVersionValue(),
+		Version:       "Copperline by Britney Lozza",
 		PingDelay:     20 * time.Second,
 		PingTimeout:   15 * time.Second,
 	}
@@ -1012,8 +1012,8 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 			if ctcp != nil && !strings.EqualFold(ctcp.Command, "ACTION") {
 				switch strings.ToUpper(ctcp.Command) {
 				case girc.CTCP_VERSION:
-					if reply := m.cfg.General.CTCPVersionValue(); reply != "" && m.allowCTCPReply(server, *ctcp) {
-						c.Cmd.SendCTCPReply(source, girc.CTCP_VERSION, reply)
+					if m.allowCTCPReply(server, *ctcp) {
+						c.Cmd.SendCTCPReply(source, girc.CTCP_VERSION, "Copperline by Britney Lozza")
 					}
 				case girc.CTCP_TIME:
 					if m.allowCTCPReply(server, *ctcp) {
@@ -1078,6 +1078,15 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		if len(e.Params) >= 2 {
 			m.clearTyping(server, e.Params[0], e.Params[1])
 			m.emitMessage(model.Message{Time: when, Server: server, Target: e.Params[0], Kind: model.KindSystem, Text: fmt.Sprintf("%s kicked %s: %s", source, e.Params[1], e.Last()), Tags: tags})
+		}
+		return
+	case girc.MODE:
+		if len(e.Params) >= 2 {
+			target := "*server*"
+			if model.IsChannel(e.Params[0]) {
+				target = e.Params[0]
+			}
+			m.emitMessage(model.Message{Time: when, Server: server, Target: target, Kind: model.KindSystem, Text: source + " set modes on " + e.Params[0] + ": " + strings.Join(e.Params[1:], " "), Tags: tags})
 		}
 		return
 	case girc.TOPIC:
@@ -1146,7 +1155,9 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 	// 473 (invite only), 475 (bad key), and 477 (registration required).
 	if isNumericCommand(e.Command) {
 		target := "*server*"
-		if len(e.Params) > 1 && model.IsChannel(e.Params[1]) {
+		// LIST rows describe available channels; they must not create a buffer
+		// for every channel on the network.
+		if e.Command != "322" && len(e.Params) > 1 && model.IsChannel(e.Params[1]) {
 			target = e.Params[1]
 		}
 		text := e.Command

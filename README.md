@@ -169,19 +169,6 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
-## New in 0.2.15
-
-Customize the text returned to `/ctcp yourNick VERSION` in your existing TOML configuration:
-
-```toml
-[general]
-ctcp_version = "My IRC client"
-```
-
-Omit `ctcp_version` to retain `Copperline by Britney Lozza`, or set it to `""` to disable VERSION replies. Leading/trailing whitespace is trimmed. The value must be a single line without NUL or CTCP delimiter characters. This changes only the CTCP VERSION response, not `--version` or other CTCP replies. Requests still appear in the conversation even when replies are disabled.
-
-In direct mode, configure your local client. In relay mode, configure the **relay server**, which sends the IRC replies; changing only an attached client's config has no effect. Restart the relevant instance after changing this setting.
-
 ## New in 0.2.14
 
 - **Per-buffer drafts:** channels, private conversations, and server buffers each retain their own unsent text, cursor position, and multiline paste state when you switch away. Drafts stay on the current machine for the current session and survive relay reconnects. Sending clears that buffer's draft; `/close` discards it.
@@ -558,6 +545,26 @@ Press `Alt-L` for bare/copy mode. Copperline temporarily hides the normal UI chr
 /notice target message
 /ctcp nick command [text]
 /nick newnick
+/oper name password
+/away [message]
+/back
+/mode [target] [modes [arguments]]
+/op [#channel] nick
+/deop [#channel] nick
+/voice [#channel] nick
+/devoice [#channel] nick
+/kick [#channel] nick [reason]
+/ban [#channel] [mask]
+/unban [#channel] mask
+/invite nick [#channel]
+/list [channels [server]]
+/names [#channel]
+/who [mask [flags]]
+/whowas nick [count [server]]
+/motd [server]
+/time [server]
+/stats [query [server]]
+/links [mask | server mask]
 /topic new topic
 /whois nick
 /ignore [list]
@@ -587,6 +594,20 @@ Press `Alt-L` for bare/copy mode. Copperline temporarily hides the normal UI chr
 /close
 /quit [reason]
 ```
+
+Channel commands default to the active channel; outside a channel, supply one
+explicitly. `/mode` defaults to the active channel or, in other buffers, your own
+nickname. `/mode +m` changes the current channel; `/mode yournick +i` changes your
+user modes. A leading `+` or `-` is interpreted as a mode string; use `/raw MODE`
+to explicitly address legacy `+channel` names. `/ban` without a mask lists bans;
+ban masks are sent as entered (there is no automatic nick-to-hostmask lookup).
+`/invite #channel nick` is also accepted. `/who` defaults to the active channel,
+or `*` elsewhere. `/names`, `/who`, and channel-mode query replies appear in the
+requesting buffer; other server replies use the existing server/channel output.
+
+For `/oper`, everything after the name is the password, including internal spaces
+and a leading colon; do not add quotes. The command is excluded from input history.
+`/away` with no message and `/back` both clear away status.
 
 CTCP examples:
 

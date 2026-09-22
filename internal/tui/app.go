@@ -107,11 +107,13 @@ type App struct {
 
 	copyMode bool
 
-	connectionMu     sync.Mutex
-	connectionSeen   map[string]bool
-	reconnectPending map[string]bool
-	whoisMu          sync.Mutex
-	pendingWhois     map[string]pendingWhoisRequest
+	connectionMu      sync.Mutex
+	connectionSeen    map[string]bool
+	reconnectPending  map[string]bool
+	whoisMu           sync.Mutex
+	pendingWhois      map[string]pendingWhoisRequest
+	ircQueryMu        sync.Mutex
+	pendingIRCQueries []*pendingIRCQuery
 
 	closedBuffersMu sync.RWMutex
 	closedBuffers   map[string]bool
@@ -192,6 +194,9 @@ func NewWithBackend(cfg *config.Config, backend ircclient.Backend) *App {
 }
 
 func (a *App) bindBackend(backend ircclient.Backend) {
+	a.ircQueryMu.Lock()
+	a.pendingIRCQueries = nil
+	a.ircQueryMu.Unlock()
 	backend.SetMessageSink(a.onMessage)
 	backend.SetEventSink(a.onIRCEvent)
 	backend.SetUpdateSink(a.onBackendUpdate)
@@ -431,6 +436,7 @@ func (a *App) onIRCEvent(ev ircclient.Event) {
 	}
 	a.handleConnectionFeedback(ev)
 	a.handleWhoisReply(ev)
+	a.handleIRCQueryReply(ev)
 
 	if a.scripts != nil {
 		a.scripts.EmitEvent(scripting.Event{

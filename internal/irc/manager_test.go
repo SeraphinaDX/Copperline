@@ -185,3 +185,26 @@ func TestWhoisNumericUsesRawEventWithoutDuplicateServerMessage(t *testing.T) {
 		t.Fatalf("WHOIS was also emitted as a generic server message: %#v", messages)
 	}
 }
+
+func TestSlashCommandReplyRouting(t *testing.T) {
+	for _, tc := range []struct {
+		command string
+		params  []string
+		target  string
+	}{
+		{"322", []string{"tester", "#unjoined", "42", "A channel"}, "*server*"},
+		{"MODE", []string{"#chat", "+m"}, "#chat"},
+		{"MODE", []string{"#chat", "+o", "alice"}, "#chat"},
+		{"MODE", []string{"tester", "+i"}, "*server*"},
+	} {
+		t.Run(tc.command+"/"+tc.params[0], func(t *testing.T) {
+			var messages []model.Message
+			m := New(&config.Config{}, func(msg model.Message) { messages = append(messages, msg) })
+			c := girc.New(girc.Config{Server: "irc.test", Nick: "tester", User: "tester"})
+			m.handleEvent("test", c, girc.Event{Command: tc.command, Source: &girc.Source{Name: "irc.test"}, Params: tc.params})
+			if len(messages) != 1 || messages[0].Target != tc.target {
+				t.Fatalf("reply output = %#v, want one message in %s", messages, tc.target)
+			}
+		})
+	}
+}
