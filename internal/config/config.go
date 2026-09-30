@@ -42,6 +42,8 @@ type GeneralConfig struct {
 	ShowTyping        *bool    `toml:"show_typing"`
 	SendTyping        *bool    `toml:"send_typing"`
 	ShowJoinMessages  *bool    `toml:"show_join_messages"`
+	ShowPartMessages  *bool    `toml:"show_part_messages"`
+	ShowParts         *bool    `toml:"show_parts"`
 	HistoryLines      int      `toml:"history_lines"`
 	InputHistoryLimit *int     `toml:"input_history_limit"`
 	LogBacklogLines   *int     `toml:"log_backlog_lines"`
@@ -280,6 +282,20 @@ func (g GeneralConfig) SendTypingEnabled() bool {
 
 func (g GeneralConfig) ShowJoinMessagesEnabled() bool {
 	return g.ShowJoinMessages == nil || *g.ShowJoinMessages
+}
+
+// ShowPartMessagesEnabled controls only the visible PART line. IRC membership
+// state is still maintained by girc even when the line is hidden. show_parts is
+// accepted as a compatibility alias for early configs; the explicit
+// show_part_messages spelling wins if both are present.
+func (g GeneralConfig) ShowPartMessagesEnabled() bool {
+	if g.ShowPartMessages != nil {
+		return *g.ShowPartMessages
+	}
+	if g.ShowParts != nil {
+		return *g.ShowParts
+	}
+	return true
 }
 
 func (g GeneralConfig) InputHistoryLimitValue() int {

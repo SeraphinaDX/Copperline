@@ -161,6 +161,41 @@ func TestOnlyJoinPartAndQuitSuppressUnreadActivity(t *testing.T) {
 	}
 }
 
+func TestPartMessagesCanBeHidden(t *testing.T) {
+	show := false
+	var messages []model.Message
+	m := &Manager{
+		cfg: &config.Config{General: config.GeneralConfig{ShowPartMessages: &show}},
+		sessions:     make(map[string]*Session),
+		typing:       make(map[string]typingEntry),
+		knownTargets: make(map[string]map[string]struct{}),
+		emit:         func(msg model.Message) { messages = append(messages, msg) },
+	}
+	c := girc.New(girc.Config{Server: "irc.test", Nick: "tester", User: "tester"})
+	m.handleEvent("test", c, girc.Event{
+		Command: girc.PART,
+		Source:  &girc.Source{Name: "alice"},
+		Params:  []string{"#chan", "bye"},
+	})
+	if len(messages) != 0 {
+		t.Fatalf("hidden PART emitted messages: %#v", messages)
+	}
+}
+
+func TestShowPartsCompatibilityAlias(t *testing.T) {
+	show := false
+	cfg := config.GeneralConfig{ShowParts: &show}
+	if cfg.ShowPartMessagesEnabled() {
+		t.Fatal("show_parts = false compatibility alias was ignored")
+	}
+
+	explicit := true
+	cfg.ShowPartMessages = &explicit
+	if !cfg.ShowPartMessagesEnabled() {
+		t.Fatal("show_part_messages should take precedence over show_parts")
+	}
+}
+
 func TestWhoisNumericUsesRawEventWithoutDuplicateServerMessage(t *testing.T) {
 	var events []Event
 	var messages []model.Message

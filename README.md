@@ -164,10 +164,18 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Mouse support** for scrollback, buffer selection, nick-list scrolling, private-query opening, and relay reconnect
 - **Automatic IRC reconnect** and independent per-server connection handling
 - **Clear startup feedback** with connecting/joining states and progress information
-- **Configurable JOIN-message noise**, typing privacy, logging, mouse behavior, notifications, history limits, and other day-to-day preferences
+- **Configurable JOIN/PART-message noise**, typing privacy, logging, mouse behavior, notifications, history limits, and other day-to-day preferences
 - **TOML configuration** with environment-variable support for passwords and tokens
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
+
+## Fixed in 0.2.18
+
+PART visibility is now configurable independently from JOIN visibility. Use
+`show_part_messages = false` under `[general]` to hide `nick left` lines
+without affecting membership tracking, typing cleanup, or unread activity.
+The older `show_parts` spelling is also accepted for compatibility, while
+`show_part_messages` takes precedence if both appear.
 
 ## Fixed in 0.2.17
 

@@ -1066,12 +1066,16 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		return
 	case girc.PART:
 		if len(e.Params) > 0 {
+			// PART still updates girc's membership state and clears any typing
+			// indicator even when the user has chosen to hide the transcript line.
 			m.clearTyping(server, e.Params[0], source)
-			text := source + " left"
-			if len(e.Params) > 1 {
-				text += " (" + e.Last() + ")"
+			if m.cfg.General.ShowPartMessagesEnabled() {
+				text := source + " left"
+				if len(e.Params) > 1 {
+					text += " (" + e.Last() + ")"
+				}
+				m.emitMessage(model.Message{Time: when, Server: server, Target: e.Params[0], Kind: model.KindSystem, Text: text, Tags: tags, SuppressUnread: true})
 			}
-			m.emitMessage(model.Message{Time: when, Server: server, Target: e.Params[0], Kind: model.KindSystem, Text: text, Tags: tags, SuppressUnread: true})
 		}
 		return
 	case girc.KICK:
