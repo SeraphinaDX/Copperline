@@ -2,6 +2,9 @@
 nick = "myNick"
 user = "myNick"
 real_name = "Copperline User"
+# Optional custom CTCP VERSION response. Omit for the default; "" disables replies.
+# In relay mode, set this on the relay server and restart it.
+# ctcp_version = "My IRC client"
 logging = true
 log_dir = "~/.local/state/copperline/logs"
 # Persistent ignore rules. In relay mode this belongs on the relay server.
