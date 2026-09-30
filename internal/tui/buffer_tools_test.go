@@ -33,8 +33,10 @@ func TestBufferDraftsAndCommands(t *testing.T) {
 	if a.input.Text != "second draft" || a.input.Cursor != 4 {
 		t.Fatal("destination draft lost")
 	}
+	a.selectBuffer(server, "alice")
+	a.input.Text = "query draft"
 	a.execute("/close")
-	a.selectBuffer(server, "#two")
+	a.selectBuffer(server, "alice")
 	if a.input.Text != "" {
 		t.Fatal("closed buffer retained its draft")
 	}

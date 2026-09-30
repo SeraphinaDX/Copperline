@@ -201,6 +201,15 @@ func (a *App) execute(line string) {
 	case "close":
 		if b.Target != "*server*" {
 			a.closeBufferLocally(b.Server, b.Target)
+			if model.IsChannel(b.Target) {
+				// Hide the PART echo and queued traffic before requesting the leave.
+				// A failed request keeps the buffer available so the user can retry.
+				if err := a.irc.Part(b.Server, b.Target, strings.TrimSpace(rest)); err != nil {
+					a.reopenBuffer(b.Server, b.Target)
+					a.local(b.Server, b.Target, model.KindError, "Could not leave channel; buffer kept open: "+err.Error())
+					return
+				}
+			}
 			delete(a.transcriptCaches, model.Key(b.Server, b.Target))
 			a.state.Close(b.Server, b.Target)
 			a.syncInputDraft()

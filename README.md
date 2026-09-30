@@ -169,6 +169,16 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
 
+## Fixed in 0.2.17
+
+`/close [reason]` now sends PART before closing a channel buffer, including when
+attached to a relay. A failed leave request keeps the buffer open and displays
+the error. PART echoes, queued messages, and relay replay cannot reopen the
+closed channel; use `/join #channel` to open it again. In relay mode, leaving
+affects the shared IRC connection and therefore all attached clients. Closing
+a private conversation still only closes its local buffer; a new PM can reopen it.
+Configured autojoin channels are unchanged.
+
 ## Fixed in 0.2.16
 
 Restored the configurable CTCP VERSION response, which was accidentally removed

@@ -372,7 +372,24 @@ func (a *App) reopenBuffer(server, target string) {
 	a.closedBuffersMu.Unlock()
 }
 
+// Hold the closed-buffer lock through insertion so a concurrent /close cannot
+// be undone by a delivery that checked the flag just before the close.
+func (a *App) addVisibleMessage(msg model.Message) bool {
+	a.closedBuffersMu.RLock()
+	defer a.closedBuffersMu.RUnlock()
+	if (msg.Replay || model.IsChannel(msg.Target)) && a.closedBuffers[model.Key(msg.Server, msg.Target)] {
+		return false
+	}
+	a.state.Add(msg)
+	return true
+}
+
 func (a *App) onMessage(msg model.Message) {
+	// A closed channel stays closed until an explicit /join. PART echoes and
+	// in-flight relay messages must not undo /close. Queries may reopen on a PM.
+	if model.IsChannel(msg.Target) && a.isBufferClosed(msg.Server, msg.Target) {
+		return
+	}
 	// Mentions are detected only for incoming chat/action messages. In
 	// particular, we never inspect the input widget, and an echoed copy of
 	// our own outgoing message cannot highlight itself as a mention.
@@ -385,8 +402,8 @@ func (a *App) onMessage(msg model.Message) {
 	}
 	if msg.Replay {
 		// A locally closed buffer must not be resurrected merely because a relay
-		// attachment replays retained history for every known target. Live traffic
-		// below is allowed to reopen it so genuinely new conversation is visible.
+		// attachment replays retained history for every known target. Only new
+		// private messages may automatically reopen a closed conversation.
 		if a.isBufferClosed(msg.Server, msg.Target) {
 			return
 		}
@@ -396,22 +413,24 @@ func (a *App) onMessage(msg model.Message) {
 		// A force reconnect receives the relay's bounded history again, so skip
 		// rows already retained locally while still accepting messages that
 		// arrived during the disconnected gap.
-		if !a.state.ContainsMessage(msg) {
-			a.state.Add(msg)
+		if !a.state.ContainsMessage(msg) && a.addVisibleMessage(msg) {
 			a.requestRedraw()
 		}
 		return
 	}
-	// Genuine new traffic reopens a locally hidden conversation. Routine relay
-	// snapshots and replay history do not.
-	a.reopenBuffer(msg.Server, msg.Target)
+	// New private messages may reopen queries; channels require explicit /join.
+	if !model.IsChannel(msg.Target) {
+		a.reopenBuffer(msg.Server, msg.Target)
+	}
 
 	// Establish the persistent-log boundary before this message becomes visible
 	// to the UI. For dynamically joined channels, the first redraw can otherwise
 	// race the first log write and classify current-session traffic as muted
 	// backlog when the channel is opened or revisited later.
 	_ = a.logger.BeginBuffer(msg.Server, msg.Target)
-	a.state.Add(msg)
+	if !a.addVisibleMessage(msg) {
+		return
+	}
 	// Wake the UI immediately after the message becomes visible in state. Do
 	// this before the actual append, notifications, or script callbacks so those
 	// side effects can never hold up the on-screen conversation.
@@ -511,10 +530,11 @@ func (a *App) onBackendUpdate() {
 	for _, server := range a.irc.ServerNames() {
 		a.state.Ensure(server, "*server*")
 		for _, target := range a.irc.KnownTargets(server) {
-			if a.isBufferClosed(server, target) {
-				continue
+			a.closedBuffersMu.RLock()
+			if !a.closedBuffers[model.Key(server, target)] {
+				a.state.Ensure(server, target)
 			}
-			a.state.Ensure(server, target)
+			a.closedBuffersMu.RUnlock()
 		}
 	}
 	a.requestRedraw()
