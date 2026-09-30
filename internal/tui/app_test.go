@@ -729,7 +729,7 @@ func TestClosedBufferIsNotResurrectedByBackendSnapshot(t *testing.T) {
 	}
 }
 
-func TestLiveMessageReopensLocallyClosedBuffer(t *testing.T) {
+func TestLiveMessageReopensLocallyClosedQuery(t *testing.T) {
 	state := model.New(100)
 	state.Ensure("testnet", "*server*")
 	backend := &knownTargetsBackend{servers: map[string][]string{"testnet": {"#later"}}}
@@ -742,20 +742,20 @@ func TestLiveMessageReopensLocallyClosedBuffer(t *testing.T) {
 		redraw:        make(chan struct{}, 1),
 	}
 
-	app.closeBufferLocally("testnet", "#later")
+	app.closeBufferLocally("testnet", "alice")
 	app.onMessage(model.Message{
 		Time:   time.Now(),
 		Server: "testnet",
-		Target: "#later",
+		Target: "alice",
 		Nick:   "alice",
 		Text:   "new traffic",
 		Kind:   model.KindMessage,
 	})
 
-	if app.isBufferClosed("testnet", "#later") {
+	if app.isBufferClosed("testnet", "alice") {
 		t.Fatal("live message did not clear local closed-buffer tombstone")
 	}
-	if got := state.Find("testnet", "#later"); got == nil || len(got.Messages) != 1 || got.Messages[0].Text != "new traffic" {
+	if got := state.Find("testnet", "alice"); got == nil || len(got.Messages) != 1 || got.Messages[0].Text != "new traffic" {
 		t.Fatalf("live message did not reopen channel correctly: %#v", got)
 	}
 }
