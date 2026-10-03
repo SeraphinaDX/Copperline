@@ -18,9 +18,10 @@ mouse = true
 # when you are composing a message.
 show_typing = true
 send_typing = true
-# Set false to hide JOIN/PART transcript noise while still tracking membership.
+# Set false to hide JOIN/PART/QUIT notices without affecting membership.
 show_join_messages = true
 show_part_messages = true
+show_quit_messages = true
 history_lines = 2000
 # Input/command history kept per buffer for the current session. Set 0 to disable.
 input_history_limit = 10

@@ -1125,8 +1125,21 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		}
 		return
 	case girc.QUIT:
+		// Resolve shared channels before girc removes the quitting user from
+		// membership state. This event is received by ALL_EVENTS before its
+		// command-specific state tracker runs.
+		channels := nickChangeChannels(c, source, source, false)
 		m.clearTypingNick(server, source)
-		m.emitMessage(model.Message{Time: when, Server: server, Target: "*server*", Kind: model.KindSystem, Text: source + " quit: " + e.Last(), Tags: tags, SuppressUnread: true})
+		if m.cfg.General.ShowQuitMessagesEnabled() {
+			text := source + " quit"
+			if reason := strings.TrimSpace(e.Last()); reason != "" {
+				text += ": " + reason
+			}
+			m.emitMessage(model.Message{Time: when, Server: server, Target: "*server*", Kind: model.KindSystem, Text: text, Tags: tags, SuppressUnread: true})
+			for _, channel := range channels {
+				m.emitMessage(model.Message{Time: when, Server: server, Target: channel, Kind: model.KindSystem, Text: text, Tags: tags, SuppressUnread: true})
+			}
+		}
 		return
 	case "FAIL", "WARN", "NOTE":
 		m.serverLine(server, model.KindSystem, e.Command+": "+e.Last())

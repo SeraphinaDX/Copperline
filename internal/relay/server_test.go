@@ -9,7 +9,7 @@ func TestRelayHousekeepingNumericsAreNotForwarded(t *testing.T) {
 			t.Errorf("numeric %s should be suppressed from raw relay event forwarding", command)
 		}
 	}
-	for _, command := range []string{"001", "311", "401", "PRIVMSG", "CONNECTED", "DISCONNECTED"} {
+	for _, command := range []string{"001", "311", "401", "PRIVMSG", "PART", "QUIT", "CONNECTED", "DISCONNECTED"} {
 		if relayHousekeepingNumeric(command) {
 			t.Errorf("event %s should still be forwarded by the relay", command)
 		}

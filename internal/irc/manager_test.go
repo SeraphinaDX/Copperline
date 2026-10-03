@@ -243,3 +243,24 @@ func TestSlashCommandReplyRouting(t *testing.T) {
 		})
 	}
 }
+
+func TestQuitMessagesCanBeHidden(t *testing.T) {
+	show := false
+	var messages []model.Message
+	m := New(&config.Config{General: config.GeneralConfig{ShowQuitMessages: &show}}, func(msg model.Message) { messages = append(messages, msg) })
+	c := girc.New(girc.Config{Server: "irc.test", Nick: "tester", User: "tester"})
+	m.handleEvent("test", c, girc.Event{Command: girc.QUIT, Source: &girc.Source{Name: "alice"}, Params: []string{"gone"}})
+	if len(messages) != 0 {
+		t.Fatalf("hidden QUIT emitted messages: %#v", messages)
+	}
+}
+
+func TestQuitMessagesDefaultToVisibleInServerStatus(t *testing.T) {
+	var messages []model.Message
+	m := New(&config.Config{}, func(msg model.Message) { messages = append(messages, msg) })
+	c := girc.New(girc.Config{Server: "irc.test", Nick: "tester", User: "tester"})
+	m.handleEvent("test", c, girc.Event{Command: girc.QUIT, Source: &girc.Source{Name: "alice"}, Params: []string{"gone"}})
+	if len(messages) != 1 || messages[0].Target != "*server*" || messages[0].Text != "alice quit: gone" || !messages[0].SuppressUnread {
+		t.Fatalf("default QUIT notice = %#v", messages)
+	}
+}
