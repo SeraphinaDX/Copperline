@@ -164,10 +164,19 @@ Copperline also includes features that are often missing from smaller terminal I
 - **Mouse support** for scrollback, buffer selection, nick-list scrolling, private-query opening, and relay reconnect
 - **Automatic IRC reconnect** and independent per-server connection handling
 - **Clear startup feedback** with connecting/joining states and progress information
-- **Configurable JOIN/PART-message noise**, typing privacy, logging, mouse behavior, notifications, history limits, and other day-to-day preferences
+- **Independently configurable JOIN/PART/QUIT notices**, typing privacy, logging, mouse behavior, notifications, history limits, and other day-to-day preferences
 - **TOML configuration** with environment-variable support for passwords and tokens
 - **Embedded Lua scripting** for custom slash commands, IRC event hooks, automation, and raw protocol extensions
 - **Raw IRC access** for network-specific commands and newer extensions without dedicated UI yet
+
+## Configurable channel departure notices
+
+`[general].show_part_messages` and `[general].show_quit_messages` independently
+control PART and QUIT transcript notices. Both default to `true`. QUIT notices
+appear in the server buffer and in each shared channel before membership is
+removed; neither departure event increments unread activity. In relay mode,
+set these options on the IRC-owning relay server and restart it. The relay
+forwards generated notices to attached clients without a protocol change.
 
 ## Fixed in 0.2.18
 
