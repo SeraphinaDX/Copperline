@@ -44,6 +44,7 @@ type GeneralConfig struct {
 	ShowJoinMessages  *bool    `toml:"show_join_messages"`
 	ShowPartMessages  *bool    `toml:"show_part_messages"`
 	ShowParts         *bool    `toml:"show_parts"`
+	ShowQuitMessages  *bool    `toml:"show_quit_messages"`
 	HistoryLines      int      `toml:"history_lines"`
 	InputHistoryLimit *int     `toml:"input_history_limit"`
 	LogBacklogLines   *int     `toml:"log_backlog_lines"`
@@ -296,6 +297,12 @@ func (g GeneralConfig) ShowPartMessagesEnabled() bool {
 		return *g.ShowParts
 	}
 	return true
+}
+
+// ShowQuitMessagesEnabled controls QUIT transcript lines, independently of
+// PART and JOIN. Disabling them never changes IRC membership tracking.
+func (g GeneralConfig) ShowQuitMessagesEnabled() bool {
+	return g.ShowQuitMessages == nil || *g.ShowQuitMessages
 }
 
 func (g GeneralConfig) InputHistoryLimitValue() int {
