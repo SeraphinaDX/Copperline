@@ -26,10 +26,11 @@ jobs:
       - run: make gui
       - run: make tui
       - run: |
-          mkdir -p dist/Copperline-GUI-linux-amd64
+          mkdir -p dist/Copperline-GUI-linux-amd64/cmd/copperline-gui
+          mkdir -p dist/Copperline-GUI-linux-amd64/packaging/linux
           cp copperline-gui dist/Copperline-GUI-linux-amd64/
-          cp cmd/copperline-gui/Icon.png dist/Copperline-GUI-linux-amd64/
-          cp packaging/linux/ca.cerberusgames.copperline.desktop dist/Copperline-GUI-linux-amd64/
+          cp cmd/copperline-gui/Icon.png dist/Copperline-GUI-linux-amd64/cmd/copperline-gui/
+          cp packaging/linux/ca.cerberusgames.copperline.desktop dist/Copperline-GUI-linux-amd64/packaging/linux/
           cp Makefile dist/Copperline-GUI-linux-amd64/
       - uses: actions/upload-artifact@v4
         with:
