@@ -181,7 +181,26 @@ func (g *App) build() {
 			g.selectBuffer(b.Server, b.Target)
 		}
 	}
-	g.nicklist = widget.NewList(func() int { return len(g.users) }, func() fyne.CanvasObject { return widget.NewLabel("") }, func(id widget.ListItemID, o fyne.CanvasObject) { o.(*widget.Label).SetText(g.users[id]) })
+	if g.mobile {
+		g.nicklist = widget.NewList(
+			func() int { return len(g.users) },
+			func() fyne.CanvasObject { return widget.NewLabel("") },
+			func(id widget.ListItemID, o fyne.CanvasObject) { o.(*widget.Label).SetText(g.users[id]) },
+		)
+	} else {
+		g.nicklist = widget.NewList(
+			func() int { return len(g.users) },
+			func() fyne.CanvasObject { return newSecondaryLabel() },
+			func(id widget.ListItemID, o fyne.CanvasObject) {
+				row := o.(*secondaryLabel)
+				row.SetText(g.users[id])
+				nick := strings.TrimLeft(g.users[id], "~&@%+")
+				row.onSecondary = func(ev *fyne.PointEvent) {
+					g.showNickMenu(nick, ev.AbsolutePosition)
+				}
+			},
+		)
+	}
 	g.nicklist.OnSelected = func(id widget.ListItemID) {
 		if id < 0 || id >= len(g.users) {
 			return
@@ -246,6 +265,62 @@ func (g *App) build() {
 	g.window.SetContent(g.root)
 	g.entry.Disable()
 	g.send.Disable()
+}
+
+func (g *App) showNickMenu(nick string, pos fyne.Position) {
+	b := g.state.CurrentInfo()
+	if b == nil || nick == "" {
+		return
+	}
+	server, target := b.Server, b.Target
+
+	items := []*fyne.MenuItem{
+		fyne.NewMenuItem("Open Query", func() { g.selectBuffer(server, nick) }),
+		fyne.NewMenuItem("WHOIS", func() { g.runNickCommands(server, target, "/whois "+nick) }),
+		fyne.NewMenuItem("Slap!", func() { g.runNickCommands(server, target, "/me slaps "+nick+" around a bit with a large trout") }),
+		fyne.NewMenuItem("Copy Nick", func() { g.window.Clipboard().SetContent(nick) }),
+	}
+	if model.IsChannel(target) {
+		items = append(items,
+			fyne.NewMenuItemSeparator(),
+			fyne.NewMenuItem("Op", func() { g.runNickCommands(server, target, "/raw MODE "+target+" +o "+nick) }),
+			fyne.NewMenuItem("Deop", func() { g.runNickCommands(server, target, "/raw MODE "+target+" -o "+nick) }),
+			fyne.NewMenuItem("Voice", func() { g.runNickCommands(server, target, "/raw MODE "+target+" +v "+nick) }),
+			fyne.NewMenuItem("Devoice", func() { g.runNickCommands(server, target, "/raw MODE "+target+" -v "+nick) }),
+			fyne.NewMenuItemSeparator(),
+			fyne.NewMenuItem("Kick", func() { g.runNickCommands(server, target, "/raw KICK "+target+" "+nick) }),
+			fyne.NewMenuItem("Kick + Ban", func() {
+				g.runNickCommands(server, target,
+					"/raw MODE "+target+" +b "+nick+"!*@*",
+					"/raw KICK "+target+" "+nick,
+				)
+			}),
+		)
+	}
+	widget.ShowPopUpMenuAtPosition(fyne.NewMenu(nick, items...), g.window.Canvas(), pos)
+}
+
+func (g *App) runNickCommands(server, target string, commands ...string) {
+	c := g.client
+	if c == nil || !c.TransportConnected() {
+		dialog.ShowError(fmt.Errorf("relay is not connected"), g.window)
+		return
+	}
+	generation := g.generation.Load()
+	go func() {
+		ctx := clientcmd.Context{Backend: c, Server: server, Target: target}
+		for _, command := range commands {
+			if err := clientcmd.Execute(ctx, command); err != nil {
+				if !g.closed.Load() {
+					fyne.Do(func() { dialog.ShowError(err, g.window) })
+				}
+				return
+			}
+		}
+		if generation == g.generation.Load() {
+			g.dirty.Store(true)
+		}
+	}()
 }
 
 func (g *App) panel(title string, list *widget.List) {
