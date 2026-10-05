@@ -1,4 +1,4 @@
-# Copperline GUI 0.2.23
+# Copperline GUI 0.2.24
 
 One Fyne frontend for desktop and Android, using Copperline's existing SSH relay
 client. This milestone is a **relay client**. Start an existing Copperline relay
@@ -59,7 +59,7 @@ up stops automatic scrolling; switching buffers or sending resumes it. Mentions,
 actions, notices, and errors use the configured theme colors. Server-status
 buffers show connection and WHOIS output.
 
-Enter sends one line; **Send** does the same. A failed or uncertain send restores
+On desktop, **Tab** in the message box completes nicknames from the current channel. At the start of a message it uses the IRC reply form `Nick: `, and repeated Tab presses cycle matching nicknames.\n\nEnter sends one line; **Send** does the same. A failed or uncertain send restores
 the draft, or offers its text for copying if a newer draft already occupies that
 buffer. Copperline never automatically retries an uncertain send.
 
