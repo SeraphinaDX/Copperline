@@ -180,6 +180,10 @@ removed; neither departure event increments unread activity. In relay mode,
 set these options on the IRC-owning relay server and restart it. The relay
 forwards generated notices to attached clients without a protocol change.
 
+## New in 0.2.25
+
+`/map` requests the IRC network topology from the active server in every Copperline frontend: the terminal UI, desktop GUI, and Android GUI. MAP replies are shown in the network's server/status buffer. The command accepts no arguments and uses the relay's existing raw IRC path, so no relay protocol bump is required.
+
 ## Fixed in 0.2.18
 
 PART visibility is now configurable independently from JOIN visibility. Use
@@ -615,6 +619,7 @@ Press `Alt-L` for bare/copy mode. Copperline temporarily hides the normal UI chr
 /time [server]
 /stats [query [server]]
 /links [mask | server mask]
+/map
 /topic new topic
 /whois nick
 /ignore [list]
@@ -652,7 +657,8 @@ user modes. A leading `+` or `-` is interpreted as a mode string; use `/raw MODE
 to explicitly address legacy `+channel` names. `/ban` without a mask lists bans;
 ban masks are sent as entered (there is no automatic nick-to-hostmask lookup).
 `/invite #channel nick` is also accepted. `/who` defaults to the active channel,
-or `*` elsewhere. `/names`, `/who`, and channel-mode query replies appear in the
+or `*` elsewhere. `/map` requests the current server's network topology and displays
+its replies in that server's status buffer. `/names`, `/who`, and channel-mode query replies appear in the
 requesting buffer; other server replies use the existing server/channel output.
 
 For `/oper`, everything after the name is the password, including internal spaces
