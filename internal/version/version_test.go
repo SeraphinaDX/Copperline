@@ -1,8 +1,10 @@
 package version
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/BurntSushi/toml"
@@ -19,6 +21,7 @@ func TestFyneMetadataMatchesApplicationVersion(t *testing.T) {
 		Details struct {
 			Version string
 			Build   int
+			ID      string
 		}
 	}
 	if _, err := toml.DecodeFile(path, &app); err != nil {
