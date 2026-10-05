@@ -475,6 +475,20 @@ func Load(path string) (*Config, error) {
 	return &cfg, nil
 }
 
+// Decode loads TOML from application-owned storage, including Android storage.
+// It uses the same defaults and validation as the terminal client's file loader.
+func Decode(data string) (*Config, error) {
+	var cfg Config
+	if _, err := toml.Decode(data, &cfg); err != nil {
+		return nil, err
+	}
+	cfg.applyDefaults()
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
 func (c *Config) applyDefaults() {
 	if c.General.Nick == "" {
 		c.General.Nick = "copperline"
@@ -554,6 +568,13 @@ func (c *Config) applyDefaults() {
 			s.SASL.Mechanism = "plain"
 		}
 	}
+}
+
+// DefaultTheme returns Copperline's built-in palette for frontends before setup.
+func DefaultTheme() ThemeConfig {
+	var t ThemeConfig
+	t.applyDefaults()
+	return t
 }
 
 func (t *ThemeConfig) applyDefaults() {

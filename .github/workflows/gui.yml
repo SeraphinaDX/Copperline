@@ -1,0 +1,53 @@
+name: GUI and Android
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test -race -tags ci ./...
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev pkg-config
+      - run: go build -o copperline-gui ./cmd/copperline-gui
+      - run: go build -o copperline ./cmd/copperline
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Copperline-GUI-linux-amd64
+          path: copperline-gui
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+      - run: echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+      - run: go install fyne.io/tools/cmd/fyne@v1.7.3
+      - run: fyne package -os android/arm64 -app-id ca.cerberusgames.copperline -name Copperline -icon Icon.png
+        working-directory: cmd/copperline-gui
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Copperline-Android-arm64
+          path: cmd/copperline-gui/*.apk
+          if-no-files-found: error

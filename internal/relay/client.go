@@ -1,6 +1,7 @@
 package relay
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,12 +28,13 @@ const (
 type Client struct {
 	cfg *config.Config
 
-	transport net.Conn
-	sshClient *ssh.Client
-	ch        ssh.Channel
-	enc       *json.Encoder
-	dec       *json.Decoder
-	sendMu    sync.Mutex
+	transport         net.Conn
+	sshClient         *ssh.Client
+	ch                ssh.Channel
+	enc               *json.Encoder
+	dec               *json.Decoder
+	sendMu            sync.Mutex
+	messageDeliveryMu sync.Mutex
 
 	mu             sync.RWMutex
 	snapshot       ircclient.StateSnapshot
@@ -56,6 +58,29 @@ func NewClient(cfg *config.Config) (*Client, error) {
 		return nil, fmt.Errorf("relay private key: %w", err)
 	}
 
+	client, err := NewClientWithOptions(cfg, ClientOptions{Signer: signer})
+	if err != nil && generatedKey {
+		return nil, fmt.Errorf("%w (a new Copperline relay key was generated; add %s to the relay server authorized_keys file)", err, publicKeyPath)
+	}
+	return client, err
+}
+
+// ClientOptions lets frontends own authentication storage and cancel attachment.
+// A signer can come from app-private storage instead of a desktop filename.
+type ClientOptions struct {
+	Signer  ssh.Signer
+	Context context.Context
+}
+
+func NewClientWithOptions(cfg *config.Config, options ClientOptions) (*Client, error) {
+	if options.Signer == nil {
+		return nil, errors.New("relay signer is required")
+	}
+	ctx := options.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	hostKeyCallback := func(hostname string, remote net.Addr, key ssh.PublicKey) error {
 		got := ssh.FingerprintSHA256(key)
 		want := strings.TrimSpace(cfg.Relay.HostKeyFingerprint)
@@ -73,23 +98,23 @@ func NewClient(cfg *config.Config) (*Client, error) {
 
 	sshCfg := &ssh.ClientConfig{
 		User:            cfg.Relay.User,
-		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(options.Signer)},
 		HostKeyCallback: hostKeyCallback,
 		Timeout:         15 * time.Second,
 		ClientVersion:   "SSH-2.0-Copperline-relay",
 	}
-	transport, err := net.DialTimeout("tcp", cfg.Relay.Address, sshCfg.Timeout)
+	dialer := net.Dialer{Timeout: sshCfg.Timeout}
+	transport, err := dialer.DialContext(ctx, "tcp", cfg.Relay.Address)
 	if err != nil {
 		return nil, fmt.Errorf("connect relay %s: %w", cfg.Relay.Address, err)
 	}
+	stopCancellation := context.AfterFunc(ctx, func() { _ = transport.Close() })
+	defer stopCancellation()
 	// Bound the SSH handshake as well as the TCP dial.
 	_ = transport.SetDeadline(time.Now().Add(sshCfg.Timeout))
 	conn, chans, reqs, err := ssh.NewClientConn(transport, cfg.Relay.Address, sshCfg)
 	if err != nil {
 		_ = transport.Close()
-		if generatedKey {
-			return nil, fmt.Errorf("connect relay %s: %w (a new Copperline relay key was generated; add %s to the relay server authorized_keys file)", cfg.Relay.Address, err, publicKeyPath)
-		}
 		return nil, fmt.Errorf("connect relay %s: %w", cfg.Relay.Address, err)
 	}
 	sshClient := ssh.NewClient(conn, chans, reqs)
@@ -178,12 +203,17 @@ func (c *Client) reader() {
 			}
 		case "message":
 			if f.Message != nil {
-				c.mu.RLock()
+				c.messageDeliveryMu.Lock()
+				c.mu.Lock()
 				sink := c.messageSink
-				c.mu.RUnlock()
+				if sink == nil {
+					c.pendingHistory = append(c.pendingHistory, *f.Message)
+				}
+				c.mu.Unlock()
 				if sink != nil {
 					sink(*f.Message)
 				}
+				c.messageDeliveryMu.Unlock()
 			}
 		case "event":
 			if f.Event != nil {
@@ -217,10 +247,15 @@ func (c *Client) reader() {
 }
 
 func (c *Client) SetMessageSink(sink func(model.Message)) {
+	// Initial history must drain before new live frames reach the subscriber.
+	c.messageDeliveryMu.Lock()
+	defer c.messageDeliveryMu.Unlock()
 	c.mu.Lock()
 	c.messageSink = sink
 	history := append([]model.Message(nil), c.pendingHistory...)
-	c.pendingHistory = nil
+	if sink != nil {
+		c.pendingHistory = nil
+	}
 	c.mu.Unlock()
 	if sink != nil {
 		for _, msg := range history {
