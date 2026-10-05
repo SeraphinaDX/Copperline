@@ -262,12 +262,16 @@ func (g *App) build() {
 		g.send.Importance = widget.HighImportance
 		g.topicSet.Importance = widget.LowImportance
 
-		desktopHeader := container.NewBorder(
+		// Keep the title/actions on their own row so the topic editor is not
+		// constrained by the title's minimum width. The topic bar then receives
+		// the full chat width on every desktop channel, independent of topic text.
+		desktopTopRow := container.NewBorder(
 			nil, nil,
-			container.NewVBox(g.title, topicBar),
+			g.title,
 			container.NewHBox(reconnect, settings),
 			nil,
 		)
+		desktopHeader := container.NewVBox(desktopTopRow, topicBar)
 		composer := container.NewBorder(nil, nil, nil, g.send, g.entry)
 		g.chat = container.NewBorder(desktopHeader, container.NewVBox(g.status, composer), nil, nil, g.scroll)
 
