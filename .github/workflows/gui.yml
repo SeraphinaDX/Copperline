@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev pkg-config
+      - run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev pkg-config libwayland-dev libxkbcommon-dev
       - run: go build -o copperline-gui ./cmd/copperline-gui
       - run: go build -o copperline ./cmd/copperline
       - uses: actions/upload-artifact@v4

@@ -87,8 +87,8 @@ a dropped connection is shown as disconnected, and unsent messages are not retri
 
 Use Go 1.26 or newer. Fyne requires a C compiler and platform graphics development
 libraries. On CachyOS/Arch, install `base-devel`, `pkgconf`, `libglvnd`, `libxcursor`,
-`libxrandr`, `libxinerama`, and `libxi`. On Debian/Ubuntu, install `gcc`, `pkg-config`,
-`libgl1-mesa-dev`, and `xorg-dev`.
+`libxrandr`, `libxinerama`, `libxi`, `wayland`, and `libxkbcommon`. On Debian/Ubuntu, install `gcc`, `pkg-config`,
+`libgl1-mesa-dev`, `xorg-dev`, `libwayland-dev`, and `libxkbcommon-dev`.
 
 From the repository root:
 
