@@ -107,7 +107,7 @@ func TestPhoneAndDesktopLayoutAndDrafts(t *testing.T) {
 	for _, size := range []fyne.Size{fyne.NewSize(1100, 720), fyne.NewSize(360, 720), fyne.NewSize(320, 568)} {
 		g.window.Resize(size)
 		g.root.Layout.Layout(g.root.Objects, g.root.Size())
-		if g.channels.Visible() != (size.Width >= 800) {
+		if g.channelPane.Visible() != (size.Width >= 800) || g.userPane.Visible() != (size.Width >= 800) {
 			t.Fatal("sidebar visibility")
 		}
 		if g.entry.Position().X+g.entry.Size().Width > g.chat.Size().Width+1 {
