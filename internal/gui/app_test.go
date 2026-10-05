@@ -225,7 +225,7 @@ func TestPhoneSetupFitsScreen(t *testing.T) {
 }
 
 
-func TestSecondaryLabelDispatchesRightClick(t *testing.T) {
+func TestSecondaryLabelDispatchesSecondaryAction(t *testing.T) {
 	item := newSecondaryLabel()
 	called := false
 	item.onSecondary = func(ev *fyne.PointEvent) {
@@ -233,6 +233,6 @@ func TestSecondaryLabelDispatchesRightClick(t *testing.T) {
 	}
 	item.TappedSecondary(&fyne.PointEvent{AbsolutePosition: fyne.NewPos(12, 34)})
 	if !called {
-		t.Fatal("secondary tap was not dispatched")
+		t.Fatal("secondary action was not dispatched")
 	}
 }
