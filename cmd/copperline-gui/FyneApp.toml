@@ -4,3 +4,8 @@ Name = "Copperline"
 ID = "ca.cerberusgames.copperline"
 Version = "0.2.23"
 Build = 23
+
+[AdaptiveIcon]
+Foreground = "Icon-foreground.png"
+Background = "Icon-background.png"
+Monochrome = "Icon-monochrome.png"
