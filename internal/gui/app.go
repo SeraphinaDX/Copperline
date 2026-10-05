@@ -181,26 +181,20 @@ func (g *App) build() {
 			g.selectBuffer(b.Server, b.Target)
 		}
 	}
-	if g.mobile {
-		g.nicklist = widget.NewList(
-			func() int { return len(g.users) },
-			func() fyne.CanvasObject { return widget.NewLabel("") },
-			func(id widget.ListItemID, o fyne.CanvasObject) { o.(*widget.Label).SetText(g.users[id]) },
-		)
-	} else {
-		g.nicklist = widget.NewList(
-			func() int { return len(g.users) },
-			func() fyne.CanvasObject { return newSecondaryLabel() },
-			func(id widget.ListItemID, o fyne.CanvasObject) {
-				row := o.(*secondaryLabel)
-				row.SetText(g.users[id])
-				nick := strings.TrimLeft(g.users[id], "~&@%+")
-				row.onSecondary = func(ev *fyne.PointEvent) {
-					g.showNickMenu(nick, ev.AbsolutePosition)
-				}
-			},
-		)
-	}
+	// Fyne maps SecondaryTappable to right-click on desktop and long-press on
+	// mobile, so the same nick action menu works naturally on both platforms.
+	g.nicklist = widget.NewList(
+		func() int { return len(g.users) },
+		func() fyne.CanvasObject { return newSecondaryLabel() },
+		func(id widget.ListItemID, o fyne.CanvasObject) {
+			row := o.(*secondaryLabel)
+			row.SetText(g.users[id])
+			nick := strings.TrimLeft(g.users[id], "~&@%+")
+			row.onSecondary = func(ev *fyne.PointEvent) {
+				g.showNickMenu(nick, ev.AbsolutePosition)
+			}
+		},
+	)
 	g.nicklist.OnSelected = func(id widget.ListItemID) {
 		if id < 0 || id >= len(g.users) {
 			return
