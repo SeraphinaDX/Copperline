@@ -32,6 +32,10 @@ func (b *commandBackend) Part(s, t, text string) error {
 	b.action, b.server, b.target, b.text = "part", s, t, text
 	return b.err
 }
+func (b *commandBackend) Raw(s, line string) error {
+	b.action, b.server, b.target, b.text = "raw", s, "", line
+	return b.err
+}
 
 func TestCommandsKeepTargetsAndText(t *testing.T) {
 	for _, tc := range []struct{ line, action, target, text string }{
@@ -42,6 +46,7 @@ func TestCommandsKeepTargetsAndText(t *testing.T) {
 		{"/join #new secret", "join", "#new", "secret"},
 		{"/part goodbye everyone", "part", "#go", "goodbye everyone"},
 		{"/part #new leaving now", "part", "#new", "leaving now"},
+		{"/map", "raw", "", "MAP"},
 	} {
 		t.Run(tc.line, func(t *testing.T) {
 			b := &commandBackend{}
