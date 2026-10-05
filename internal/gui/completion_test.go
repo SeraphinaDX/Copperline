@@ -64,7 +64,7 @@ func TestMobileComposerDoesNotCaptureTab(t *testing.T) {
 	e := newComposerEntry(false, func() bool {
 		t.Fatal("mobile composer should not invoke nickname completion")
 		return true
-	})
+	}, nil)
 	if e.AcceptsTab() {
 		t.Fatal("mobile composer unexpectedly captures Tab")
 	}
