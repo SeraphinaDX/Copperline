@@ -114,7 +114,15 @@ This installs `copperline-gui` to `~/.local/bin`, the launcher entry as
 `Icon.png` used by Android under the matching hicolor icon name. Fully close any
 running Copperline window and launch it again after installing. KWin matches the
 Fyne Wayland app ID `ca.cerberusgames.copperline` to that desktop entry; a raw
-binary without the desktop entry may otherwise show the generic Wayland icon.
+binary without the desktop entry may otherwise show the generic Wayland icon in
+both the taskbar and window decoration.
+
+The GitHub Linux artifact includes the same desktop integration files. After
+extracting that artifact, install the prebuilt copy with:
+
+```sh
+make install-gui-prebuilt
+```
 
 By default, configuration and the key are in Fyne's private application storage
 for `ca.cerberusgames.copperline`, separate from the TUI's default configuration.
