@@ -3,7 +3,6 @@ package gui
 import (
 	"testing"
 
-	"copperline/internal/model"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/test"
 )
@@ -94,5 +93,4 @@ func TestCompletionRequiresChannel(t *testing.T) {
 		t.Fatalf("query text changed: %q", g.entry.Text)
 	}
 
-	_ = model.Key // keep model imported alongside GUI model usage changes
 }
