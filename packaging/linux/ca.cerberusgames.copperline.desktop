@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Copperline
+GenericName=IRC Client
+Comment=IRC client with relay support
+Exec=copperline-gui
+Icon=ca.cerberusgames.copperline
+Terminal=false
+Categories=Network;IRCClient;
+StartupWMClass=Copperline

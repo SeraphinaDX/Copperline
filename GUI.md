@@ -1,4 +1,4 @@
-# Copperline GUI 0.2.21
+# Copperline GUI 0.2.22
 
 One Fyne frontend for desktop and Android, using Copperline's existing SSH relay
 client. This milestone is a **relay client**. Start an existing Copperline relay
@@ -93,12 +93,35 @@ libraries. On CachyOS/Arch, install `base-devel`, `pkgconf`, `libglvnd`, `libxcu
 `libxrandr`, `libxinerama`, `libxi`, `wayland`, and `libxkbcommon`. On Debian/Ubuntu, install `gcc`, `pkg-config`,
 `libgl1-mesa-dev`, `xorg-dev`, `libwayland-dev`, and `libxkbcommon-dev`.
 
-From the repository root:
+From the repository root, a plain development build still works:
 
 ```sh
-go build -o copperline-gui ./cmd/copperline-gui
+make gui
 ./copperline-gui -version
 ./copperline-gui
+```
+
+On Linux desktops, especially KDE/Wayland, install the GUI desktop integration
+once so the compositor can resolve Copperline's Wayland app ID to the correct
+window/taskbar icon:
+
+```sh
+make install-gui
+```
+
+This installs `copperline-gui` to `~/.local/bin`, the launcher entry as
+`~/.local/share/applications/ca.cerberusgames.copperline.desktop`, and the same
+`Icon.png` used by Android under the matching hicolor icon name. Fully close any
+running Copperline window and launch it again after installing. KWin matches the
+Fyne Wayland app ID `ca.cerberusgames.copperline` to that desktop entry; a raw
+binary without the desktop entry may otherwise show the generic Wayland icon in
+both the taskbar and window decoration.
+
+The GitHub Linux artifact includes the same desktop integration files. After
+extracting that artifact, install the prebuilt copy with:
+
+```sh
+make install-gui-prebuilt
 ```
 
 By default, configuration and the key are in Fyne's private application storage
@@ -114,7 +137,7 @@ key, so authorize the key shown in GUI setup. The `-config=` syntax also works i
 fish. The TUI remains buildable independently:
 
 ```sh
-go build -o copperline ./cmd/copperline
+make tui
 ```
 
 Windows and macOS use the same `cmd/copperline-gui` entry point with Fyne's normal

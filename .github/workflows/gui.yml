@@ -23,12 +23,19 @@ jobs:
         with:
           go-version-file: go.mod
       - run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev xorg-dev pkg-config libwayland-dev libxkbcommon-dev
-      - run: go build -o copperline-gui ./cmd/copperline-gui
-      - run: go build -o copperline ./cmd/copperline
+      - run: make gui
+      - run: make tui
+      - run: |
+          mkdir -p dist/Copperline-GUI-linux-amd64/cmd/copperline-gui
+          mkdir -p dist/Copperline-GUI-linux-amd64/packaging/linux
+          cp copperline-gui dist/Copperline-GUI-linux-amd64/
+          cp cmd/copperline-gui/Icon.png dist/Copperline-GUI-linux-amd64/cmd/copperline-gui/
+          cp packaging/linux/ca.cerberusgames.copperline.desktop dist/Copperline-GUI-linux-amd64/packaging/linux/
+          cp Makefile dist/Copperline-GUI-linux-amd64/
       - uses: actions/upload-artifact@v4
         with:
           name: Copperline-GUI-linux-amd64
-          path: copperline-gui
+          path: dist/Copperline-GUI-linux-amd64
   android:
     runs-on: ubuntu-latest
     steps:
