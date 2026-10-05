@@ -1,5 +1,7 @@
 # Copperline
 
+**Desktop and Android GUI:** the new Fyne relay frontend lives in `cmd/copperline-gui`. See [GUI.md](GUI.md) for setup, desktop builds, and Android APK packaging. The terminal frontend remains available.
+
 **Copperline is a modern terminal IRC client and native SSH relay/bouncer written in Go.** It is built for people who still love IRC, but do not want to give up a fast native application, modern IRCv3 features, rich terminal UI, scripting, notifications, persistent sessions, or strong customization.
 
 Copperline is not a toy IRC example and it is not just a thin wrapper around an IRC library. It is an everyday multi-network client with its own buffer model, responsive TUI, persistent logging, DCC, Gotify notifications, Lua scripting, configurable keyboard and mouse controls, true-color themes, IRCv3 support, and an **embedded SSH relay system that can keep your IRC sessions alive when your local client is gone**.

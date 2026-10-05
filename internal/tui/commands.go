@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"copperline/internal/clientcmd"
 	"copperline/internal/config"
 	"copperline/internal/model"
 	"copperline/internal/scripting"
@@ -376,32 +377,15 @@ func (a *App) executeDCC(b *model.Buffer, sub, rest string) {
 // sendTextCommand is shared by interactive input and scripts. Interactive
 // callers retain the complete command when delivery cannot be confirmed.
 func (a *App) sendTextCommand(line string) (bool, error) {
-	cmd, rest := cutWord(strings.TrimSpace(strings.TrimPrefix(line, "/")))
-	cmd = strings.ToLower(cmd)
-	if cmd != "msg" && cmd != "me" && cmd != "notice" {
-		return false, nil
-	}
 	b := a.state.CurrentInfo()
-	if b == nil {
-		return true, fmt.Errorf("select a channel or query first")
+	c := clientcmd.Context{Backend: a.irc, Open: func(server, target string) {
+		a.reopenBuffer(server, target)
+		a.state.Ensure(server, target)
+	}}
+	if b != nil {
+		c.Server, c.Target = b.Server, b.Target
 	}
-	arg, tail := cutWord(rest)
-	switch cmd {
-	case "msg":
-		if arg == "" || strings.TrimSpace(tail) == "" {
-			return true, fmt.Errorf("usage: /msg nick message")
-		}
-		a.reopenBuffer(b.Server, arg)
-		a.state.Ensure(b.Server, arg)
-		return true, a.irc.SendMessage(b.Server, arg, strings.TrimSpace(tail))
-	case "me":
-		return true, a.irc.SendAction(b.Server, b.Target, rest)
-	default:
-		if arg == "" || strings.TrimSpace(tail) == "" {
-			return true, fmt.Errorf("usage: /notice target message")
-		}
-		return true, a.irc.Notice(b.Server, arg, strings.TrimSpace(tail))
-	}
+	return clientcmd.SendText(c, line)
 }
 
 func (a *App) executePaste(sub string) {
