@@ -223,3 +223,16 @@ func TestPhoneSetupFitsScreen(t *testing.T) {
 		f.Close()
 	}
 }
+
+
+func TestSecondaryLabelDispatchesRightClick(t *testing.T) {
+	item := newSecondaryLabel()
+	called := false
+	item.onSecondary = func(ev *fyne.PointEvent) {
+		called = ev != nil && ev.AbsolutePosition == fyne.NewPos(12, 34)
+	}
+	item.TappedSecondary(&fyne.PointEvent{AbsolutePosition: fyne.NewPos(12, 34)})
+	if !called {
+		t.Fatal("secondary tap was not dispatched")
+	}
+}
