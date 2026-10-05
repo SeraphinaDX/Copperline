@@ -5,8 +5,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// secondaryLabel behaves like a normal label for left-click list selection,
-// while also letting desktop nick-list rows expose a right-click context menu.
+// secondaryLabel behaves like a normal label for ordinary list selection,
+// while exposing Fyne's secondary action: right-click on desktop or long-press on mobile.
 type secondaryLabel struct {
 	widget.Label
 	onSecondary func(*fyne.PointEvent)
