@@ -110,6 +110,14 @@ func Execute(c Context, line string) error {
 			return fmt.Errorf("select a channel first")
 		}
 		return c.Backend.Topic(c.Server, c.Target, rest)
+	case "map":
+		if rest != "" {
+			return fmt.Errorf("usage: /map")
+		}
+		if c.Server == "" {
+			return fmt.Errorf("select a server first")
+		}
+		return c.Backend.Raw(c.Server, "MAP")
 	case "raw":
 		if rest == "" {
 			return fmt.Errorf("usage: /raw IRC command")
@@ -121,6 +129,6 @@ func Execute(c Context, line string) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("unknown GUI command /%s; use /join, /part, /msg, /me, /notice, /nick, /topic, /whois, /raw, /clear", cmd)
+		return fmt.Errorf("unknown GUI command /%s; use /join, /part, /msg, /me, /notice, /nick, /topic, /whois, /map, /raw, /clear", cmd)
 	}
 }
