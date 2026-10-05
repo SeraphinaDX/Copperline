@@ -187,7 +187,7 @@ func (g *App) build() {
 	g.topicSet = widget.NewButton("Set", g.submitTopic)
 	g.status = widget.NewLabel("Not connected")
 	g.status.Wrapping = fyne.TextWrapWord
-	g.entry = newComposerEntry(!g.mobile, g.completeNick)
+	g.entry = newComposerEntry(!g.mobile, g.completeNick, g.resetNickCompletion)
 	g.entry.SetPlaceHolder("Message or /command…")
 	g.entry.OnChanged = func(string) {
 		if !g.nickCompletionApplying {
