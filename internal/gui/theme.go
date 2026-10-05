@@ -9,7 +9,10 @@ import (
 	"strings"
 )
 
-type copperTheme struct{ cfg config.ThemeConfig }
+type copperTheme struct {
+	cfg     config.ThemeConfig
+	compact bool
+}
 
 func (t copperTheme) Color(name fyne.ThemeColorName, v fyne.ThemeVariant) color.Color {
 	value := ""
@@ -46,4 +49,25 @@ func (t copperTheme) Color(name fyne.ThemeColorName, v fyne.ThemeVariant) color.
 }
 func (t copperTheme) Font(s fyne.TextStyle) fyne.Resource     { return theme.DefaultTheme().Font(s) }
 func (t copperTheme) Icon(n fyne.ThemeIconName) fyne.Resource { return theme.DefaultTheme().Icon(n) }
-func (t copperTheme) Size(n fyne.ThemeSizeName) float32       { return theme.DefaultTheme().Size(n) }
+func (t copperTheme) Size(n fyne.ThemeSizeName) float32 {
+	if !t.compact {
+		return theme.DefaultTheme().Size(n)
+	}
+	switch n {
+	case theme.SizeNamePadding:
+		return 3
+	case theme.SizeNameInnerPadding:
+		return 6
+	case theme.SizeNameScrollBar:
+		return 9
+	case theme.SizeNameScrollBarSmall:
+		return 2
+	case theme.SizeNameInputRadius:
+		return 8
+	case theme.SizeNameButtonRadius:
+		return 10
+	case theme.SizeNameSelectionRadius:
+		return 7
+	}
+	return theme.DefaultTheme().Size(n)
+}

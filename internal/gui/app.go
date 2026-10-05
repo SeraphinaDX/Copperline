@@ -58,6 +58,8 @@ type App struct {
 	done                 chan struct{}
 	profiles             map[string]*profile
 	profileID            string
+	mobile               bool
+	channelPane, userPane fyne.CanvasObject
 }
 
 type profile struct {
@@ -76,23 +78,24 @@ func New(a fyne.App, configPath string) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("relay identity: %w", err)
 	}
+	mobile := fyne.CurrentDevice().IsMobile()
 	g := &App{app: a, window: a.NewWindow("Copperline GUI"), storage: storage, signer: signer,
-		configText: text, state: model.New(1000), drafts: map[string]string{}, clearThrough: map[string]uint64{}, foreground: true, done: make(chan struct{})}
+		configText: text, state: model.New(1000), drafts: map[string]string{}, clearThrough: map[string]uint64{}, foreground: true, done: make(chan struct{}), mobile: mobile}
 	t := config.DefaultTheme()
 	if cfg, err := config.Decode(text); err == nil {
 		t = cfg.Theme
 	}
-	a.Settings().SetTheme(copperTheme{cfg: t})
+	a.Settings().SetTheme(copperTheme{cfg: t, compact: !mobile})
 	a.SetIcon(Icon)
 	g.window.SetIcon(Icon)
 	g.build()
-	if fyne.CurrentDevice().IsMobile() {
+	if mobile {
 		g.window.Resize(fyne.NewSize(360, 720))
 	} else {
 		g.window.Resize(fyne.NewSize(1100, 720))
 	}
 	g.window.SetOnClosed(g.shutdown)
-	if fyne.CurrentDevice().IsMobile() {
+	if mobile {
 		a.Lifecycle().SetOnExitedForeground(func() {
 			fyne.Do(func() {
 				g.foreground = false
@@ -160,6 +163,7 @@ func (g *App) build() {
 	g.transcript = widget.NewRichText()
 	g.transcript.Wrapping = fyne.TextWrapWord
 	g.scroll = container.NewVScroll(g.transcript)
+
 	g.channels = widget.NewList(func() int { return len(g.buffers) }, func() fyne.CanvasObject { return widget.NewLabel("") }, func(id widget.ListItemID, o fyne.CanvasObject) {
 		b := g.buffers[id]
 		label := b.Server + " / " + b.Target
@@ -189,10 +193,56 @@ func (g *App) build() {
 		nick := strings.TrimLeft(g.users[id], "~&@%+")
 		g.selectBuffer(b.Server, nick)
 	}
-	tools := container.NewGridWithColumns(2, widget.NewButton("Channels", func() { g.panel("Channels", g.channels) }), widget.NewButton("Users", func() { g.panel("Users", g.nicklist) }), widget.NewButton("Reconnect", g.connect), widget.NewButton("Settings", g.settings))
-	g.chat = container.NewBorder(container.NewVBox(g.title, g.topic), container.NewVBox(g.status, container.NewBorder(nil, nil, nil, g.send, g.entry)), nil, nil, g.scroll)
-	g.root = fyne.NewContainerWithLayout(&responsiveLayout{chat: g.chat, channels: g.channels, users: g.nicklist}, tools, g.chat, g.channels, g.nicklist)
-	g.root.Layout = &responsiveLayout{chat: g.chat, channels: g.channels, users: g.nicklist}
+
+	channelHeading := widget.NewLabel("CHANNELS")
+	channelHeading.TextStyle.Bold = true
+	userHeading := widget.NewLabel("USERS")
+	userHeading.TextStyle.Bold = true
+	g.channelPane = container.NewBorder(channelHeading, nil, nil, nil, g.channels)
+	g.userPane = container.NewBorder(userHeading, nil, nil, nil, g.nicklist)
+
+	var tools fyne.CanvasObject
+	if g.mobile {
+		// Keep the existing touch-friendly Android controls exactly as before.
+		tools = container.NewGridWithColumns(2,
+			widget.NewButton("Channels", func() { g.panel("Channels", g.channels) }),
+			widget.NewButton("Users", func() { g.panel("Users", g.nicklist) }),
+			widget.NewButton("Reconnect", g.connect),
+			widget.NewButton("Settings", g.settings),
+		)
+		g.chat = container.NewBorder(
+			container.NewVBox(g.title, g.topic),
+			container.NewVBox(g.status, container.NewBorder(nil, nil, nil, g.send, g.entry)),
+			nil, nil, g.scroll,
+		)
+	} else {
+		// Desktop keeps navigation visible, so the main chrome can stay quiet.
+		reconnect := widget.NewButtonWithIcon("Reconnect", theme.ViewRefreshIcon(), g.connect)
+		reconnect.Importance = widget.LowImportance
+		settings := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), g.settings)
+		settings.Importance = widget.LowImportance
+		g.send.Importance = widget.HighImportance
+
+		desktopHeader := container.NewBorder(
+			nil, nil,
+			container.NewVBox(g.title, g.topic),
+			container.NewHBox(reconnect, settings),
+			nil,
+		)
+		composer := container.NewBorder(nil, nil, nil, g.send, g.entry)
+		g.chat = container.NewBorder(desktopHeader, container.NewVBox(g.status, composer), nil, nil, g.scroll)
+
+		// These only appear if a desktop window is narrowed enough to hide sidebars.
+		channels := widget.NewButtonWithIcon("Channels", theme.MenuIcon(), func() { g.panel("Channels", g.channels) })
+		channels.Importance = widget.LowImportance
+		users := widget.NewButtonWithIcon("Users", theme.AccountIcon(), func() { g.panel("Users", g.nicklist) })
+		users.Importance = widget.LowImportance
+		tools = container.NewHBox(channels, users)
+	}
+
+	responsive := &responsiveLayout{chat: g.chat, channels: g.channelPane, users: g.userPane, mobile: g.mobile}
+	g.root = fyne.NewContainerWithLayout(responsive, tools, g.chat, g.channelPane, g.userPane)
+	g.root.Layout = responsive
 	g.window.SetContent(g.root)
 	g.entry.Disable()
 	g.send.Disable()
@@ -275,7 +325,7 @@ func (g *App) connect() {
 		g.topic.SetText("")
 	}
 	g.cfg = cfg
-	g.app.Settings().SetTheme(copperTheme{cfg: cfg.Theme})
+	g.app.Settings().SetTheme(copperTheme{cfg: cfg.Theme, compact: !g.mobile})
 	g.messageMu.Lock()
 	g.state.MaxLines = cfg.General.HistoryLines
 	g.messageMu.Unlock()
