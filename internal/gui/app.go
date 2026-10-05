@@ -93,8 +93,6 @@ func New(a fyne.App, configPath string) (*App, error) {
 		t = cfg.Theme
 	}
 	a.Settings().SetTheme(copperTheme{cfg: t, compact: !mobile})
-	a.SetIcon(Icon)
-	g.window.SetIcon(Icon)
 	g.build()
 	if mobile {
 		g.window.Resize(fyne.NewSize(360, 720))
@@ -125,6 +123,16 @@ func New(a fyne.App, configPath string) (*App, error) {
 		g.settings()
 	}
 	return g, nil
+}
+
+// SetIcon applies the caller-provided packaged icon to both the Fyne app and
+// its main window. The GUI executable embeds cmd/copperline-gui/Icon.png.
+func (g *App) SetIcon(icon fyne.Resource) {
+	if icon == nil {
+		return
+	}
+	g.app.SetIcon(icon)
+	g.window.SetIcon(icon)
 }
 
 func (g *App) Run() {

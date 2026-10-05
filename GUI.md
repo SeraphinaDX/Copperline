@@ -1,4 +1,4 @@
-# Copperline GUI 0.2.20
+# Copperline GUI 0.2.21
 
 One Fyne frontend for desktop and Android, using Copperline's existing SSH relay
 client. This milestone is a **relay client**. Start an existing Copperline relay
@@ -128,7 +128,10 @@ go run -tags mobile ./cmd/copperline-gui
 
 Install a JDK, Android SDK and NDK, and make `sdkmanager`/`adb` available. The
 repository's **GUI and Android** workflow builds an arm64 debug APK on PRs, main
-pushes, and manual runs, and uploads a `Copperline-Android-arm64` artifact. It also
+pushes, and manual runs, and uploads a `Copperline-Android-arm64` artifact. The
+same `cmd/copperline-gui/Icon.png` is embedded as the running desktop window icon
+and used by Fyne for desktop/Android packaging, so launcher and runtime icons stay
+in sync. It also
 builds a Linux desktop binary and runs headless race tests.
 
 For the same local build, set `ANDROID_HOME` to the SDK directory and
