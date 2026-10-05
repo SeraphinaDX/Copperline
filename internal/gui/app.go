@@ -42,9 +42,9 @@ type App struct {
 	buffers              []model.BufferInfo
 	users                []string
 	configText           string
-	title, topic, status *widget.Label
-	entry                *widget.Entry
-	send                 *widget.Button
+	title, status        *widget.Label
+	topic, entry         *widget.Entry
+	send, topicSet       *widget.Button
 	channels, nicklist   *widget.List
 	transcript           *widget.RichText
 	scroll               *container.Scroll
@@ -60,6 +60,13 @@ type App struct {
 	profileID            string
 	mobile               bool
 	channelPane, userPane fyne.CanvasObject
+	topicKey             string
+	topicDirty           bool
+	topicSyncing         bool
+	topicSending         bool
+	topicPending         bool
+	topicPendingValue    string
+	topicPendingAt       time.Time
 }
 
 type profile struct {
@@ -152,8 +159,17 @@ func (g *App) Run() {
 func (g *App) build() {
 	g.title = widget.NewLabel("Choose a channel")
 	g.title.TextStyle.Bold = true
-	g.topic = widget.NewLabel("")
-	g.topic.Wrapping = fyne.TextWrapWord
+	g.topic = widget.NewEntry()
+	g.topic.SetPlaceHolder("Channel topic")
+	g.topic.OnChanged = func(string) {
+		if g.topicSyncing {
+			return
+		}
+		g.topicDirty = true
+		g.topicPending = false
+	}
+	g.topic.OnSubmitted = func(string) { g.submitTopic() }
+	g.topicSet = widget.NewButton("Set", g.submitTopic)
 	g.status = widget.NewLabel("Not connected")
 	g.status.Wrapping = fyne.TextWrapWord
 	g.entry = widget.NewEntry()
@@ -213,6 +229,7 @@ func (g *App) build() {
 	userHeading.TextStyle.Bold = true
 	g.channelPane = container.NewBorder(channelHeading, nil, nil, nil, g.channels)
 	g.userPane = container.NewBorder(userHeading, nil, nil, nil, g.nicklist)
+	topicBar := container.NewBorder(nil, nil, nil, g.topicSet, g.topic)
 
 	var tools fyne.CanvasObject
 	if g.mobile {
@@ -224,7 +241,7 @@ func (g *App) build() {
 			widget.NewButton("Settings", g.settings),
 		)
 		g.chat = container.NewBorder(
-			container.NewVBox(g.title, g.topic),
+			container.NewVBox(g.title, topicBar),
 			container.NewVBox(g.status, container.NewBorder(nil, nil, nil, g.send, g.entry)),
 			nil, nil, g.scroll,
 		)
@@ -235,10 +252,11 @@ func (g *App) build() {
 		settings := widget.NewButtonWithIcon("Settings", theme.SettingsIcon(), g.settings)
 		settings.Importance = widget.LowImportance
 		g.send.Importance = widget.HighImportance
+		g.topicSet.Importance = widget.LowImportance
 
 		desktopHeader := container.NewBorder(
 			nil, nil,
-			container.NewVBox(g.title, g.topic),
+			container.NewVBox(g.title, topicBar),
 			container.NewHBox(reconnect, settings),
 			nil,
 		)
@@ -259,6 +277,104 @@ func (g *App) build() {
 	g.window.SetContent(g.root)
 	g.entry.Disable()
 	g.send.Disable()
+	g.topic.Disable()
+	g.topicSet.Disable()
+}
+
+func (g *App) setTopicText(text string) {
+	g.topicSyncing = true
+	g.topic.SetText(text)
+	g.topicSyncing = false
+}
+
+func (g *App) syncTopic(b *model.Buffer, c *relay.Client) {
+	if b == nil || !model.IsChannel(b.Target) {
+		g.topicKey = ""
+		g.topicDirty = false
+		g.topicPending = false
+		g.topicPendingValue = ""
+		if g.topic.Text != "" {
+			g.setTopicText("")
+		}
+		g.topic.Disable()
+		g.topicSet.Disable()
+		return
+	}
+
+	key := model.Key(b.Server, b.Target)
+	remote := ""
+	if c != nil {
+		remote = c.ChannelTopic(b.Server, b.Target)
+	}
+
+	if key != g.topicKey {
+		g.topicKey = key
+		g.topicDirty = false
+		g.topicPending = false
+		g.topicPendingValue = ""
+		g.setTopicText(remote)
+	} else if c != nil {
+		if g.topicPending {
+			if remote == g.topicPendingValue || time.Since(g.topicPendingAt) > 5*time.Second {
+				g.topicPending = false
+				g.topicPendingValue = ""
+				g.topicDirty = false
+				g.setTopicText(remote)
+			}
+		} else if !g.topicDirty && remote != g.topic.Text {
+			g.setTopicText(remote)
+		}
+	}
+
+	if c != nil && c.TransportConnected() && !g.topicSending {
+		g.topic.Enable()
+		g.topicSet.Enable()
+	} else {
+		g.topic.Disable()
+		g.topicSet.Disable()
+	}
+}
+
+func (g *App) submitTopic() {
+	if g.topicSending || g.client == nil || !g.client.TransportConnected() {
+		return
+	}
+	b := g.state.CurrentInfo()
+	if b == nil || !model.IsChannel(b.Target) {
+		return
+	}
+
+	c, text := g.client, g.topic.Text
+	server, target := b.Server, b.Target
+	key, generation := model.Key(server, target), g.generation.Load()
+	g.topicSending = true
+	g.topic.Disable()
+	g.topicSet.Disable()
+
+	go func() {
+		err := c.Topic(server, target, text)
+		if g.closed.Load() {
+			return
+		}
+		fyne.Do(func() {
+			g.topicSending = false
+			current := g.state.CurrentInfo()
+			sameBuffer := generation == g.generation.Load() && current != nil && model.Key(current.Server, current.Target) == key
+			if err != nil {
+				if sameBuffer {
+					g.topicPending = false
+					g.topicDirty = true
+				}
+				dialog.ShowError(err, g.window)
+			} else if sameBuffer {
+				g.topicDirty = false
+				g.topicPending = true
+				g.topicPendingValue = text
+				g.topicPendingAt = time.Now()
+			}
+			g.refresh()
+		})
+	}()
 }
 
 func (g *App) showNickMenu(nick string, pos fyne.Position) {
@@ -350,6 +466,8 @@ func (g *App) detach() {
 	}
 	g.entry.Disable()
 	g.send.Disable()
+	g.topic.Disable()
+	g.topicSet.Disable()
 }
 
 func (g *App) connect() {
@@ -391,7 +509,11 @@ func (g *App) connect() {
 		g.lastKey = ""
 		g.transcript.Segments = nil
 		g.transcript.Refresh()
-		g.topic.SetText("")
+		g.topicKey = ""
+		g.topicDirty = false
+		g.topicPending = false
+		g.topicPendingValue = ""
+		g.setTopicText("")
 	}
 	g.cfg = cfg
 	g.app.Settings().SetTheme(copperTheme{cfg: cfg.Theme, compact: !g.mobile})
@@ -520,12 +642,12 @@ func (g *App) refresh() {
 		g.title.SetText(b.Server + " / " + b.Target)
 		g.users = nil
 		if c != nil {
-			g.topic.SetText(c.ChannelTopic(b.Server, b.Target))
 			for _, nick := range c.Names(b.Server, b.Target) {
 				g.users = append(g.users, c.NickPrefix(b.Server, b.Target, nick)+nick)
 			}
 		}
 	}
+	g.syncTopic(b, c)
 	g.buffers, _ = g.state.SnapshotInfo()
 	g.channels.Refresh()
 	if b := g.state.CurrentInfo(); b != nil {
