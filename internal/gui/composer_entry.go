@@ -11,10 +11,11 @@ type composerEntry struct {
 	widget.Entry
 	captureTab bool
 	onTab      func() bool
+	onNonTab   func()
 }
 
-func newComposerEntry(captureTab bool, onTab func() bool) *composerEntry {
-	e := &composerEntry{captureTab: captureTab, onTab: onTab}
+func newComposerEntry(captureTab bool, onTab func() bool, onNonTab func()) *composerEntry {
+	e := &composerEntry{captureTab: captureTab, onTab: onTab, onNonTab: onNonTab}
 	e.Wrapping = fyne.TextWrap(fyne.TextTruncateClip)
 	e.ExtendBaseWidget(e)
 	return e
@@ -32,6 +33,9 @@ func (e *composerEntry) TypedKey(key *fyne.KeyEvent) {
 			e.onTab()
 		}
 		return
+	}
+	if e.onNonTab != nil {
+		e.onNonTab()
 	}
 	e.Entry.TypedKey(key)
 }
