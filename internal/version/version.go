@@ -2,6 +2,6 @@
 package version
 
 const (
-	Current = "0.2.23"
-	Build   = 23
+	Current = "0.2.24"
+	Build   = 24
 )
