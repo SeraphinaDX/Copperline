@@ -1,4 +1,4 @@
-# Copperline GUI 0.2.24
+# Copperline GUI 0.2.25
 
 One Fyne frontend for desktop and Android, using Copperline's existing SSH relay
 client. This milestone is a **relay client**. Start an existing Copperline relay
@@ -75,10 +75,11 @@ Supported slash commands:
 | `/nick` | `/nick nickname` |
 | `/topic` | `/topic new topic` in the current channel |
 | `/whois` | `/whois nickname` |
+| `/map` | `/map` — request the IRC network server map; replies appear in the server/status buffer |
 | `/raw` | `/raw IRC command` |
 | `/clear` | Clear the displayed transcript for this buffer; retain history for replay deduplication |
 
-`/msg`, `/me`, and `/notice` use the same frontend-independent dispatcher as the
+`/msg`, `/me`, `/notice`, and `/map` use the same frontend-independent dispatcher as the
 TUI. Other TUI commands, Lua scripting, DCC controls, text selection, and native
 Android notifications are outside this first GUI milestone.
 

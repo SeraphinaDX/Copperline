@@ -55,6 +55,7 @@ func TestIRCCommand(t *testing.T) {
 		{"time", "irc.example.org", "*server*", "TIME irc.example.org"},
 		{"stats", "u", "*server*", "STATS u"},
 		{"links", "irc.example.org *.example.org", "*server*", "LINKS irc.example.org *.example.org"},
+		{"map", "", "*server*", "MAP"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.cmd+" "+tt.args+" in "+tt.target, func(t *testing.T) {
@@ -85,7 +86,7 @@ func TestIRCCommandRejectsInvalidArguments(t *testing.T) {
 		{"names", "", "*server*"}, {"names", "#chat extra", "#chat"},
 		{"mode", "#chat :+o alice", "#chat"}, {"time", "server extra", "#chat"},
 		{"whowas", "", "#chat"}, {"whowas", "alice nope", "#chat"},
-		{"away", strings.Repeat("x", 511), "#chat"},
+		{"away", strings.Repeat("x", 511), "#chat"}, {"map", "extra", "#chat"},
 	} {
 		event, err := ircCommand(tt.cmd, tt.args, tt.target, "tester")
 		if event != nil || err == nil {

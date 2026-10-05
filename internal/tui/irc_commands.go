@@ -39,7 +39,7 @@ func ircCommand(cmd, rest, target, nick string) (*girc.Event, error) {
 		"kick": "[#channel] nick [reason]", "ban": "[#channel] [mask]", "unban": "[#channel] mask",
 		"invite": "nick [#channel]", "list": "[channels [server]]", "names": "[#channel]",
 		"who": "[mask [flags]]", "whowas": "nick [count [server]]",
-		"motd": "[server]", "time": "[server]", "stats": "[query [server]]", "links": "[mask | server mask]",
+		"motd": "[server]", "time": "[server]", "stats": "[query [server]]", "links": "[mask | server mask]", "map": "",
 	}
 	syntax, ok := usage[cmd]
 	if !ok {
@@ -148,7 +148,9 @@ func ircCommand(cmd, rest, target, nick string) (*girc.Event, error) {
 		event.Params = args
 	default:
 		maxArgs := 2
-		if cmd == "motd" || cmd == "time" {
+		if cmd == "map" {
+			maxArgs = 0
+		} else if cmd == "motd" || cmd == "time" {
 			maxArgs = 1
 		}
 		if len(args) > maxArgs {
