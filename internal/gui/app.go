@@ -43,7 +43,8 @@ type App struct {
 	users                []string
 	configText           string
 	title, status        *widget.Label
-	topic, entry         *widget.Entry
+	topic                *widget.Entry
+	entry                *composerEntry
 	send, topicSet       *widget.Button
 	channels, nicklist   *widget.List
 	transcript           *widget.RichText
@@ -66,7 +67,13 @@ type App struct {
 	topicSending         bool
 	topicPending         bool
 	topicPendingValue    string
-	topicPendingAt       time.Time
+	topicPendingAt        time.Time
+	nickCompletionMatches []string
+	nickCompletionIndex   int
+	nickCompletionStart   int
+	nickCompletionEnd     int
+	nickCompletionFirst   bool
+	nickCompletionApplying bool
 }
 
 type profile struct {
@@ -180,8 +187,13 @@ func (g *App) build() {
 	g.topicSet = widget.NewButton("Set", g.submitTopic)
 	g.status = widget.NewLabel("Not connected")
 	g.status.Wrapping = fyne.TextWrapWord
-	g.entry = widget.NewEntry()
+	g.entry = newComposerEntry(!g.mobile, g.completeNick)
 	g.entry.SetPlaceHolder("Message or /command…")
+	g.entry.OnChanged = func(string) {
+		if !g.nickCompletionApplying {
+			g.resetNickCompletion()
+		}
+	}
 	g.entry.OnSubmitted = func(string) { g.submit() }
 	g.send = widget.NewButton("Send", g.submit)
 	g.transcript = widget.NewRichText()
