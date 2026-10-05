@@ -236,3 +236,39 @@ func TestSecondaryLabelDispatchesSecondaryAction(t *testing.T) {
 		t.Fatal("secondary action was not dispatched")
 	}
 }
+
+
+func TestTopicEntryPreservesUserEditDuringRefresh(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	a := test.NewApp()
+	defer a.Quit()
+	g, err := New(a, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.shutdown()
+
+	g.state.Select("test", "#go")
+	g.topicKey = model.Key("test", "#go")
+	g.setTopicText("server topic")
+	if g.topicDirty {
+		t.Fatal("programmatic topic sync marked the topic dirty")
+	}
+
+	g.topic.SetText("my edited topic")
+	if !g.topicDirty {
+		t.Fatal("user topic edit was not tracked")
+	}
+
+	// A routine refresh without a new backend topic must not destroy in-progress text.
+	g.syncTopic(g.state.Current(), nil)
+	if g.topic.Text != "my edited topic" {
+		t.Fatalf("topic edit was overwritten: %q", g.topic.Text)
+	}
+
+	g.state.Select("test", "alice")
+	g.syncTopic(g.state.Current(), nil)
+	if g.topic.Text != "" || !g.topic.Disabled() || !g.topicSet.Disabled() {
+		t.Fatal("topic controls should be blank and disabled outside a channel")
+	}
+}
