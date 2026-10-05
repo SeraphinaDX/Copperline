@@ -13,9 +13,9 @@ import (
 	"copperline/internal/irc"
 	"copperline/internal/relay"
 	"copperline/internal/tui"
+	buildversion "copperline/internal/version"
 )
 
-const version = "0.2.18"
 
 func main() {
 	configPath := flag.String("config", config.DefaultPath(), "path to Copperline TOML configuration")
@@ -23,7 +23,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println("Copperline", version)
+		fmt.Println("Copperline", buildversion.Current)
 		return
 	}
 
