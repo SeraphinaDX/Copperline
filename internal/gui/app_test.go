@@ -2,6 +2,7 @@ package gui
 
 import (
 	"image/png"
+	"strings"
 	"os"
 	"path/filepath"
 	"testing"
@@ -270,5 +271,35 @@ func TestTopicEntryPreservesUserEditDuringRefresh(t *testing.T) {
 	g.syncTopic(g.state.Current(), nil)
 	if g.topic.Text != "" || !g.topic.Disabled() || !g.topicSet.Disabled() {
 		t.Fatal("topic controls should be blank and disabled outside a channel")
+	}
+}
+
+
+func TestDesktopTopicWidthDoesNotDependOnText(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	a := test.NewApp()
+	defer a.Quit()
+	g, err := New(a, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer g.shutdown()
+
+	for _, o := range g.window.Canvas().Overlays().List() {
+		g.window.Canvas().Overlays().Remove(o)
+	}
+	g.window.Resize(fyne.NewSize(1100, 720))
+	g.root.Layout.Layout(g.root.Objects, g.root.Size())
+
+	g.setTopicText("short")
+	shortWidth := g.topic.Size().Width
+	g.setTopicText(strings.Repeat("long topic ", 30))
+	longWidth := g.topic.Size().Width
+
+	if shortWidth < 300 {
+		t.Fatalf("desktop topic field is unexpectedly narrow: %.1f", shortWidth)
+	}
+	if shortWidth != longWidth {
+		t.Fatalf("topic width changed with text: short=%.1f long=%.1f", shortWidth, longWidth)
 	}
 }
