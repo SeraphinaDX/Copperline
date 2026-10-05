@@ -1,4 +1,4 @@
-# Copperline GUI 0.2.22
+# Copperline GUI 0.2.23
 
 One Fyne frontend for desktop and Android, using Copperline's existing SSH relay
 client. This milestone is a **relay client**. Start an existing Copperline relay
@@ -49,7 +49,9 @@ in-memory draft. Clicking a user opens a query. The title shows network and targ
 channel topics and nick prefixes come from the relay's current snapshot. In a
 channel, the topic is an editable field: press **Enter** in it or tap **Set** to
 submit a new topic. An empty field clears the topic. The IRC server still decides
-whether your nickname has permission to change it.
+whether your nickname has permission to change it. On desktop, the topic editor
+occupies a dedicated full-width header row, so its size stays consistent whether
+the channel topic is empty, short, or long.
 
 Live messages and relay history appear in the same transcript. Reconnecting
 preserves the retained transcript without duplicating replayed messages. Scrolling
