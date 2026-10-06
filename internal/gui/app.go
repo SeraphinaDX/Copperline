@@ -25,54 +25,54 @@ import (
 // App's widgets and connection ownership live on Fyne's event goroutine.
 // Only the thread-safe model, generation, and dirty flag cross that boundary.
 type App struct {
-	app                  fyne.App
-	window               fyne.Window
-	storage              Storage
-	signer               ssh.Signer
-	cfg                  *config.Config
-	client               *relay.Client
-	cancel               context.CancelFunc
-	generation           atomic.Uint64
-	dirty                atomic.Bool
-	closed               atomic.Bool
-	messageMu            sync.Mutex
-	state                *model.State
-	drafts               map[string]string
-	clearThrough         map[string]uint64
-	buffers              []model.BufferInfo
-	users                []string
-	configText           string
-	title, status        *widget.Label
-	topic                *widget.Entry
-	entry                *composerEntry
-	send, topicSet       *widget.Button
-	channels, nicklist   *widget.List
-	transcript           *widget.RichText
-	scroll               *container.Scroll
-	chat                 fyne.CanvasObject
-	root                 *fyne.Container
-	lastKey              string
-	lastTotal            uint64
-	sending              bool
-	foreground           bool
-	resume               bool
-	done                 chan struct{}
-	profiles             map[string]*profile
-	profileID            string
-	mobile               bool
-	channelPane, userPane fyne.CanvasObject
-	topicKey             string
-	topicDirty           bool
-	topicSyncing         bool
-	topicSending         bool
-	topicPending         bool
-	topicPendingValue    string
-	topicPendingAt        time.Time
-	nickCompletionMatches []string
-	nickCompletionIndex   int
-	nickCompletionStart   int
-	nickCompletionEnd     int
-	nickCompletionFirst   bool
+	app                    fyne.App
+	window                 fyne.Window
+	storage                Storage
+	signer                 ssh.Signer
+	cfg                    *config.Config
+	client                 *relay.Client
+	cancel                 context.CancelFunc
+	generation             atomic.Uint64
+	dirty                  atomic.Bool
+	closed                 atomic.Bool
+	messageMu              sync.Mutex
+	state                  *model.State
+	drafts                 map[string]string
+	clearThrough           map[string]uint64
+	buffers                []model.BufferInfo
+	users                  []string
+	configText             string
+	title, status          *widget.Label
+	topic                  *widget.Entry
+	entry                  *composerEntry
+	send, topicSet         *widget.Button
+	channels, nicklist     *widget.List
+	transcript             *widget.RichText
+	scroll                 *container.Scroll
+	chat                   fyne.CanvasObject
+	root                   *fyne.Container
+	lastKey                string
+	lastTotal              uint64
+	sending                bool
+	foreground             bool
+	resume                 bool
+	done                   chan struct{}
+	profiles               map[string]*profile
+	profileID              string
+	mobile                 bool
+	channelPane, userPane  fyne.CanvasObject
+	topicKey               string
+	topicDirty             bool
+	topicSyncing           bool
+	topicSending           bool
+	topicPending           bool
+	topicPendingValue      string
+	topicPendingAt         time.Time
+	nickCompletionMatches  []string
+	nickCompletionIndex    int
+	nickCompletionStart    int
+	nickCompletionEnd      int
+	nickCompletionFirst    bool
 	nickCompletionApplying bool
 }
 
@@ -196,6 +196,9 @@ func (g *App) build() {
 	}
 	g.entry.OnSubmitted = func(string) { g.submit() }
 	g.send = widget.NewButton("Send", g.submit)
+	if g.mobile {
+		g.entry.addMobileSend(g.submit)
+	}
 	g.transcript = widget.NewRichText()
 	g.transcript.Wrapping = fyne.TextWrapWord
 	g.scroll = container.NewVScroll(g.transcript)
@@ -262,7 +265,7 @@ func (g *App) build() {
 		)
 		g.chat = container.NewBorder(
 			container.NewVBox(g.title, topicBar),
-			container.NewVBox(g.status, container.NewBorder(nil, nil, nil, g.send, g.entry)),
+			container.NewVBox(g.status, g.entry),
 			nil, nil, g.scroll,
 		)
 	} else {
@@ -295,14 +298,41 @@ func (g *App) build() {
 		tools = container.NewHBox(channels, users)
 	}
 
-	responsive := &responsiveLayout{chat: g.chat, channels: g.channelPane, users: g.userPane, mobile: g.mobile}
+	responsive := &responsiveLayout{chat: g.chat, channels: g.channelPane, users: g.userPane, mobile: g.mobile,
+		scroll: g.scroll, editing: func() bool { return g.entry.focused }}
 	g.root = fyne.NewContainerWithLayout(responsive, tools, g.chat, g.channelPane, g.userPane)
 	g.root.Layout = responsive
 	g.window.SetContent(g.root)
+	if g.mobile {
+		g.entry.onFocus = func(focused bool) {
+			// The keyboard changes Android's safe content height after focus.
+			// Layout keeps the bottom anchored through every resize event.
+			g.root.Refresh()
+			if focused {
+				g.showLatest()
+			}
+		}
+	}
 	g.entry.Disable()
-	g.send.Disable()
+	g.setSendEnabled(false)
 	g.topic.Disable()
 	g.topicSet.Disable()
+}
+
+func (g *App) setSendEnabled(enabled bool) {
+	if enabled {
+		g.send.Enable()
+	} else {
+		g.send.Disable()
+	}
+	g.entry.setSendEnabled(enabled)
+}
+
+func (g *App) showLatest() {
+	g.scroll.ScrollToBottom()
+	if b := g.state.CurrentInfo(); b != nil {
+		g.state.MarkReadThrough(b.Server, b.Target, b.Total)
+	}
 }
 
 func (g *App) setTopicText(text string) {
@@ -489,7 +519,7 @@ func (g *App) detach() {
 		go client.Stop("GUI detached")
 	}
 	g.entry.Disable()
-	g.send.Disable()
+	g.setSendEnabled(false)
 	g.topic.Disable()
 	g.topicSet.Disable()
 }
@@ -603,7 +633,7 @@ func (g *App) connect() {
 				g.dirty.Store(true)
 			}()
 			g.entry.Enable()
-			g.send.Enable()
+			g.setSendEnabled(true)
 			g.status.SetText("Connected to " + cfg.Relay.Address)
 			g.refresh()
 		})
@@ -621,7 +651,7 @@ func (g *App) refresh() {
 		}
 		if !c.TransportConnected() {
 			g.entry.Disable()
-			g.send.Disable()
+			g.setSendEnabled(false)
 			g.status.SetText("Relay disconnected — tap Reconnect")
 		}
 	}
@@ -689,6 +719,11 @@ func (g *App) refresh() {
 }
 
 func (g *App) submit() {
+	if g.mobile && !g.entry.Disabled() && g.window.Canvas().Focused() != g.entry {
+		// Focus synchronously, before the asynchronous relay acknowledgement.
+		// Never steal focus back from another control after a send completes.
+		g.window.Canvas().Focus(g.entry)
+	}
 	if g.sending || g.client == nil || !g.client.TransportConnected() || strings.TrimSpace(g.entry.Text) == "" {
 		return
 	}
@@ -698,14 +733,14 @@ func (g *App) submit() {
 	}
 	c, text, generation := g.client, g.entry.Text, g.generation.Load()
 	g.sending = true
-	g.send.Disable()
+	g.setSendEnabled(false)
 	// Clearing immediately allows another buffer to keep its own draft. On
 	// failure restore the unsent text only when it cannot overwrite new typing.
 	key := model.Key(b.Server, b.Target)
 	drafts, profileID := g.drafts, g.profileID
 	g.entry.SetText("")
 	delete(g.drafts, key)
-	g.scroll.ScrollToBottom()
+	g.showLatest()
 	go func() {
 		var openServer, openTarget string
 		clear := false
@@ -716,7 +751,7 @@ func (g *App) submit() {
 		fyne.Do(func() {
 			g.sending = false
 			if g.client != nil && g.client.TransportConnected() {
-				g.send.Enable()
+				g.setSendEnabled(true)
 			}
 			if err != nil {
 				// An uncertain send is retained for manual review, never retried.
