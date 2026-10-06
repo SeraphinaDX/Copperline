@@ -2,8 +2,8 @@
 Icon = "Icon.png"
 Name = "Copperline"
 ID = "ca.cerberusgames.copperline"
-Version = "0.2.25"
-Build = 25
+Version = "0.2.26"
+Build = 26
 
 [AdaptiveIcon]
 Foreground = "Icon-foreground.png"

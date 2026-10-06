@@ -180,6 +180,13 @@ removed; neither departure event increments unread activity. In relay mode,
 set these options on the IRC-owning relay server and restart it. The relay
 forwards generated notices to attached clients without a protocol change.
 
+## Fixed in 0.2.26
+
+Android sending keeps the composer focused and the keyboard open, whether using
+the on-screen Enter key or the Send control inside the message box. Opening the
+composer scrolls to the latest messages and keeps them above the keyboard as the
+viewport changes. Navigation controls hide while typing to give chat more room.
+
 ## New in 0.2.25
 
 `/map` requests the IRC network topology from the active server in every Copperline frontend: the terminal UI, desktop GUI, and Android GUI. MAP replies are shown in the network's server/status buffer. The command accepts no arguments and uses the relay's existing raw IRC path, so no relay protocol bump is required.

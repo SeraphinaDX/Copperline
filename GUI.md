@@ -1,4 +1,4 @@
-# Copperline GUI 0.2.25
+# Copperline GUI 0.2.26
 
 One Fyne frontend for desktop and Android, using Copperline's existing SSH relay
 client. This milestone is a **relay client**. Start an existing Copperline relay
@@ -59,7 +59,9 @@ up stops automatic scrolling; switching buffers or sending resumes it. Mentions,
 actions, notices, and errors use the configured theme colors. Server-status
 buffers show connection and WHOIS output.
 
-On desktop, **Tab** in the message box completes nicknames from the current channel. At the start of a message it uses the IRC reply form `Nick: `, and repeated Tab presses cycle matching nicknames.\n\nEnter sends one line; **Send** does the same. A failed or uncertain send restores
+On desktop, **Tab** in the message box completes nicknames from the current channel. At the start of a message it uses the IRC reply form `Nick: `, and repeated Tab presses cycle matching nicknames.
+
+Enter sends one line; **Send** does the same. A failed or uncertain send restores
 the draft, or offers its text for copying if a newer draft already occupies that
 buffer. Copperline never automatically retries an uncertain send.
 
@@ -82,6 +84,12 @@ Supported slash commands:
 `/msg`, `/me`, `/notice`, and `/map` use the same frontend-independent dispatcher as the
 TUI. Other TUI commands, Lua scripting, DCC controls, text selection, and native
 Android notifications are outside this first GUI milestone.
+
+On Android, **Enter** on the on-screen keyboard and the **Send** control inside the
+message box both send while keeping the keyboard open. Opening the composer shows
+the latest messages above the keyboard; navigation controls are hidden while typing
+to leave more room for the conversation. Tap outside the composer or use Android
+Back to dismiss the keyboard.
 
 On Android, leaving the foreground detaches the SSH client. Returning reconnects
 and replays retained relay history. The relay remains connected to IRC, and its
@@ -158,7 +166,10 @@ pushes, and manual runs, and uploads a `Copperline-Android-arm64` artifact. The
 same `cmd/copperline-gui/Icon.png` is embedded as the running desktop window icon
 and used by Fyne for desktop/Android packaging, so launcher and runtime icons stay
 in sync. It also
-builds a Linux desktop binary and runs headless race tests.
+builds a Linux desktop binary and runs headless race tests. The checked-in
+`cmd/copperline-gui/AndroidManifest.xml` explicitly requests `adjustResize` so the
+keyboard reduces the chat viewport rather than covering the latest lines. Keep
+its version fields aligned with `FyneApp.toml` when bumping releases.
 
 For the same local build, set `ANDROID_HOME` to the SDK directory and
 `ANDROID_NDK_HOME` to the installed NDK directory, then run:
