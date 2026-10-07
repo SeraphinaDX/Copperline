@@ -180,6 +180,28 @@ removed; neither departure event increments unread activity. In relay mode,
 set these options on the IRC-owning relay server and restart it. The relay
 forwards generated notices to attached clients without a protocol change.
 
+## New in 0.2.27
+
+`/flex` posts a compact system summary to the current channel or query in every
+frontend: TUI, desktop GUI, and Android GUI. Command names are case-insensitive,
+so `/Flex` works too. The summary includes Copperline version, OS/release and
+architecture, CPU model and logical CPU count, RAM, system uptime, and 1/5/15-minute
+load averages when available. Android also includes the device model when available.
+Windows uses native system/registry APIs; macOS reports total RAM. Other platforms
+retain the portable OS, architecture, and CPU-count baseline. Missing/restricted
+stats are omitted.
+
+The statistics describe the device running Copperline, including in relay mode.
+The command takes no arguments and uses the normal message delivery path, so a
+failed send keeps `/flex` in the TUI input or restores the GUI draft. It does not
+include hostname, username, IP addresses, serial numbers, or account details.
+
+Example (values vary by device):
+
+```text
+Copperline 0.2.27 | OS: CachyOS (Linux 6.18)/amd64 | CPU: Intel Core i5 — 8 logical CPUs | RAM: 4.2/15.5 GiB used | Up: 2d 3h 12m | Load: 0.20 0.30 0.40
+```
+
 ## Fixed in 0.2.26
 
 Android sending keeps the composer focused and the keyboard open, whether using
@@ -627,6 +649,7 @@ Press `Alt-L` for bare/copy mode. Copperline temporarily hides the normal UI chr
 /stats [query [server]]
 /links [mask | server mask]
 /map
+/flex
 /topic new topic
 /whois nick
 /ignore [list]

@@ -3,6 +3,7 @@ package clientcmd
 import (
 	"copperline/internal/irc"
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -10,6 +11,35 @@ type commandBackend struct {
 	irc.Backend
 	action, server, target, text string
 	err                          error
+}
+
+func TestFlexUsesCurrentChannelOrQueryAndPropagatesSendErrors(t *testing.T) {
+	for _, target := range []string{"#go", "Alice"} {
+		for _, line := range []string{"/flex", "/Flex", "/FLEX"} {
+			b := &commandBackend{err: errors.New("relay unavailable")}
+			c := Context{Backend: b, Server: "Libera", Target: target}
+			if err := Execute(c, line); !errors.Is(err, b.err) {
+				t.Fatalf("failed flex send did not return the backend error: %v", err)
+			}
+			if b.action != "message" || b.server != "Libera" || b.target != target ||
+				!strings.HasPrefix(b.text, "Copperline ") || !strings.Contains(b.text, "OS:") || !strings.Contains(b.text, "CPU:") {
+				t.Fatalf("bad flex dispatch: %#v", b)
+			}
+		}
+	}
+}
+
+func TestFlexValidatesBeforeSending(t *testing.T) {
+	for _, tc := range []struct{ server, target, line string }{
+		{"test", "*server*", "/flex"}, {"test", "", "/flex"}, {"", "#go", "/flex"},
+		{"test", "#go", "/flex extra"}, {"test", "#go", "/flex\n"}, {"test", "#go", "/flex \x00"},
+	} {
+		b := &commandBackend{}
+		handled, err := SendText(Context{Backend: b, Server: tc.server, Target: tc.target}, tc.line)
+		if !handled || err == nil || b.action != "" {
+			t.Fatalf("invalid flex was not rejected: %#v handled=%v err=%v", tc, handled, err)
+		}
+	}
 }
 
 func (b *commandBackend) SendMessage(s, t, text string) error {
