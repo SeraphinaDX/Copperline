@@ -1,4 +1,4 @@
-# Copperline GUI 0.2.26
+# Copperline GUI 0.2.27
 
 One Fyne frontend for desktop and Android, using Copperline's existing SSH relay
 client. This milestone is a **relay client**. Start an existing Copperline relay
@@ -65,6 +65,12 @@ Enter sends one line; **Send** does the same. A failed or uncertain send restore
 the draft, or offers its text for copying if a newer draft already occupies that
 buffer. Copperline never automatically retries an uncertain send.
 
+`/flex` posts one compact message with Copperline version, OS/release, architecture,
+CPU model and logical CPU count, RAM, uptime, and load averages where available.
+It reports this client device, including Android, even when using an SSH relay.
+On Android the device model is included when available; macOS reports total RAM.
+Restricted or unavailable stats are omitted. Select a channel or query first.
+
 Supported slash commands:
 
 | Command | Usage |
@@ -77,11 +83,12 @@ Supported slash commands:
 | `/nick` | `/nick nickname` |
 | `/topic` | `/topic new topic` in the current channel |
 | `/whois` | `/whois nickname` |
+| `/flex` | `/flex` — post this device's OS and system stats to the current channel/query |
 | `/map` | `/map` — request the IRC network server map; replies appear in the server/status buffer |
 | `/raw` | `/raw IRC command` |
 | `/clear` | Clear the displayed transcript for this buffer; retain history for replay deduplication |
 
-`/msg`, `/me`, `/notice`, and `/map` use the same frontend-independent dispatcher as the
+`/msg`, `/me`, `/notice`, `/flex`, and `/map` use the same frontend-independent dispatcher as the
 TUI. Other TUI commands, Lua scripting, DCC controls, text selection, and native
 Android notifications are outside this first GUI milestone.
 

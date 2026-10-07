@@ -7,6 +7,7 @@ import (
 
 	"copperline/internal/irc"
 	"copperline/internal/model"
+	"copperline/internal/sysinfo"
 )
 
 type Context struct {
@@ -32,7 +33,7 @@ func SendText(c Context, line string) (bool, error) {
 	}
 	cmd, rest := CutWord(strings.TrimPrefix(line, "/"))
 	cmd = strings.ToLower(cmd)
-	if cmd != "msg" && cmd != "me" && cmd != "notice" {
+	if cmd != "msg" && cmd != "me" && cmd != "notice" && cmd != "flex" {
 		return false, nil
 	}
 	if c.Server == "" {
@@ -40,6 +41,14 @@ func SendText(c Context, line string) (bool, error) {
 	}
 	arg, tail := CutWord(rest)
 	switch cmd {
+	case "flex":
+		if rest != "" || strings.ContainsAny(line, "\r\n\x00") {
+			return true, fmt.Errorf("usage: /flex")
+		}
+		if c.Target == "" || c.Target == "*server*" {
+			return true, fmt.Errorf("select a channel or query first")
+		}
+		return true, c.Backend.SendMessage(c.Server, c.Target, sysinfo.Summary())
 	case "msg":
 		if arg == "" || tail == "" {
 			return true, fmt.Errorf("usage: /msg nick message")
@@ -129,6 +138,6 @@ func Execute(c Context, line string) error {
 		}
 		return nil
 	default:
-		return fmt.Errorf("unknown GUI command /%s; use /join, /part, /msg, /me, /notice, /nick, /topic, /whois, /map, /raw, /clear", cmd)
+		return fmt.Errorf("unknown GUI command /%s; use /join, /part, /msg, /me, /notice, /flex, /nick, /topic, /whois, /map, /raw, /clear", cmd)
 	}
 }

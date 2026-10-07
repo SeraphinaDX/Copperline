@@ -56,7 +56,7 @@ func (a *App) execute(line string) {
 	case "unread":
 		a.selectNextUnread()
 	case "help":
-		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /ctcp /nick /oper /away /back /mode /op /deop /voice /devoice /kick /ban /unban /invite /list /names /who /whois /whowas /motd /time /stats /links /map /topic /ignore /raw /history /clear /search /searchnext /searchprev /unread /markread /caps /dcc /paste /gotify /lua /close /quit")
+		a.local(b.Server, b.Target, model.KindSystem, "commands: /server /buffer /connect /disconnect /join /part /query /msg /me /notice /flex /ctcp /nick /oper /away /back /mode /op /deop /voice /devoice /kick /ban /unban /invite /list /names /who /whois /whowas /motd /time /stats /links /map /topic /ignore /raw /history /clear /search /searchnext /searchprev /unread /markread /caps /dcc /paste /gotify /lua /close /quit")
 	case "server":
 		if arg1 == "" {
 			a.local(b.Server, b.Target, model.KindSystem, "servers: "+strings.Join(a.irc.ServerNames(), ", "))

@@ -550,7 +550,7 @@ func (f *failingSendBackend) SendTyping(string, string, string) (bool, error) {
 }
 
 func TestFailedChatSendKeepsInputText(t *testing.T) {
-	for _, line := range []string{"do not lose me", "/msg alice do not lose me", "/me waves", "/notice alice do not lose me"} {
+	for _, line := range []string{"do not lose me", "/msg alice do not lose me", "/me waves", "/notice alice do not lose me", "/Flex"} {
 		t.Run(line, func(t *testing.T) {
 			cfg := &config.Config{Relay: config.RelayConfig{Mode: "client"}}
 			state := model.New(100)
