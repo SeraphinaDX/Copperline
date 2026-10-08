@@ -12,7 +12,13 @@ One Copperline installation can connect directly to IRC, run headlessly as a per
 
 ![Copperline themes in terminal](screenshots/screenshot2.avif)
 
-![Copperline Gotify notifications](screenshots/screenshot3.avif)
+<p align="center">
+  <img src="screenshots/screenshot6.avif" alt="Android">
+</p>
+
+<p align="center">
+  <img src="screenshots/screenshot3.avif" alt="gotify">
+</p>
 
 ## LLM Code Policy
 
