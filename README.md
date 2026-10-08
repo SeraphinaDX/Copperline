@@ -8,9 +8,11 @@ Copperline is not a toy IRC example and it is not just a thin wrapper around an 
 
 One Copperline installation can connect directly to IRC, run headlessly as a persistent relay, or act as a local TUI attached to a remote Copperline relay. The relay transport is built directly into Copperline using Go's SSH libraries: **no system `ssh`, no `sshd`, no web service, no TLS certificate, and no certificate authority are required.**
 
-![Copperline main interface](screenshots/screenshot1.avif)
+![Copperline main gui interface](screenshots/screenshot4.avif)
 
-![Copperline themes](screenshots/screenshot2.avif)
+![Copperline themes in terminal](screenshots/screenshot2.avif)
+
+![Copperline on Android](screenshots/screenshot5.avif)
 
 ![Copperline Gotify notifications](screenshots/screenshot3.avif)
 
