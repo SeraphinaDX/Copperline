@@ -180,6 +180,23 @@ removed; neither departure event increments unread activity. In relay mode,
 set these options on the IRC-owning relay server and restart it. The relay
 forwards generated notices to attached clients without a protocol change.
 
+## New in 0.2.28
+
+Channel lists sort alphabetically by default in the TUI, desktop GUI, and Android
+GUI. Sorting ignores letter case, keeps each network's status buffer first, and
+also orders private queries. TUI numbered jumps and next/previous/unread navigation
+follow the displayed order. Network order, selected conversations, and drafts are
+preserved.
+
+To retain creation order, configure this locally on each client:
+
+```toml
+[general]
+sort_channels_alphabetically = false
+```
+
+Omitting the setting or using `true` enables alphabetical sorting.
+
 ## New in 0.2.27
 
 `/flex` posts a compact system summary to the current channel or query in every

@@ -179,6 +179,7 @@ Global defaults and client-wide behavior.
 | `ignore_file` | string | `"~/.config/copperline/ignores.toml"` | Persistent ignore-list file. Copperline creates it with `0600` permissions and updates it atomically. In relay mode, this setting belongs to the relay server. |
 | `timestamp` | string | `"15:04"` | Go time-layout string used for displayed messages and logs. |
 | `mouse` | bool | `false` | Enables gotui mouse handling, including clickable buffers, double-clickable nicks for private queries, and mouse-wheel scrollback. |
+| `sort_channels_alphabetically` | bool | `true` | Sorts channels and private queries by name, ignoring case, within each network in the TUI, desktop GUI, and Android GUI. Keeps each network's status buffer first. Set to `false` to retain creation order. Configure locally on each relay client. |
 | `show_typing` | bool | `true` | Shows incoming IRCv3 `+typing` indicators in the message input title when the server supports `message-tags`. |
 | `send_typing` | bool | `true` | Sends your IRCv3 `+typing` state to compatible clients. Set to `false` if you do not want to reveal when you are composing a message. Slash commands never generate typing notifications. |
 | `show_join_messages` | bool | `true` | Shows `nick joined` lines in channel buffers. Set to `false` to hide JOIN messages while still tracking channel membership normally. |
@@ -188,6 +189,21 @@ Global defaults and client-wide behavior.
 | `input_history_limit` | integer | `10` | Maximum number of messages/commands remembered per buffer for Up/Down input history during the current session. `0` disables input history. Negative values are rejected. |
 | `log_backlog_lines` | integer | `10` | On the first visit to a channel buffer during a session, display this many persisted lines from before the current Copperline run in the muted theme color. Messages received during the current run always use normal live styling, even if the channel is first opened much later. Set to `0` to disable. |
 | `reconnect_seconds` | integer | `10` | Delay between reconnect attempts. Values `<= 0` are reset to `10`. |
+
+## Channel ordering
+
+Channel lists sort alphabetically by default, including when this option is
+omitted from an existing configuration. To retain creation order instead:
+
+```toml
+[general]
+sort_channels_alphabetically = false
+```
+
+Set this on the device running the TUI or GUI, including relay clients. Network
+order is preserved. TUI numbered jumps and next/previous/unread navigation follow
+the displayed order. Newly opened channels may change row numbers; the selected
+conversation and its draft stay with the same buffer.
 
 ## Ignore list
 

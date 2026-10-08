@@ -97,6 +97,7 @@ func New(a fyne.App, configPath string) (*App, error) {
 		configText: text, state: model.New(1000), drafts: map[string]string{}, clearThrough: map[string]uint64{}, foreground: true, done: make(chan struct{}), mobile: mobile}
 	t := config.DefaultTheme()
 	if cfg, err := config.Decode(text); err == nil {
+		g.cfg = cfg
 		t = cfg.Theme
 	}
 	a.Settings().SetTheme(copperTheme{cfg: t, compact: !mobile})
@@ -703,6 +704,9 @@ func (g *App) refresh() {
 	}
 	g.syncTopic(b, c)
 	g.buffers, _ = g.state.SnapshotInfo()
+	if g.cfg == nil || g.cfg.General.SortChannelsAlphabeticallyEnabled() {
+		model.SortBuffersAlphabetically(g.buffers)
+	}
 	g.channels.Refresh()
 	if b := g.state.CurrentInfo(); b != nil {
 		for i, item := range g.buffers {

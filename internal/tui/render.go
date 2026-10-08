@@ -73,7 +73,7 @@ func (a *App) render() {
 }
 
 func (a *App) rebuildSidebar() {
-	buffers, current := a.state.SnapshotInfo()
+	buffers, current := a.sidebarBuffers()
 	servers := a.irc.ServerNames()
 	var rows []string
 	var keys []string

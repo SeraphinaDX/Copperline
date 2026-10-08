@@ -29,26 +29,27 @@ type URLConfig struct {
 }
 
 type GeneralConfig struct {
-	CTCPVersion       *string  `toml:"ctcp_version"`
-	Nick              string   `toml:"nick"`
-	User              string   `toml:"user"`
-	RealName          string   `toml:"real_name"`
-	Logging           *bool    `toml:"logging"`
-	LogDir            string   `toml:"log_dir"`
-	IgnoreFile        string   `toml:"ignore_file"`
-	HighlightWords    []string `toml:"highlight_words"`
-	Timestamp         string   `toml:"timestamp"`
-	Mouse             bool     `toml:"mouse"`
-	ShowTyping        *bool    `toml:"show_typing"`
-	SendTyping        *bool    `toml:"send_typing"`
-	ShowJoinMessages  *bool    `toml:"show_join_messages"`
-	ShowPartMessages  *bool    `toml:"show_part_messages"`
-	ShowParts         *bool    `toml:"show_parts"`
-	ShowQuitMessages  *bool    `toml:"show_quit_messages"`
-	HistoryLines      int      `toml:"history_lines"`
-	InputHistoryLimit *int     `toml:"input_history_limit"`
-	LogBacklogLines   *int     `toml:"log_backlog_lines"`
-	ReconnectSecs     int      `toml:"reconnect_seconds"`
+	CTCPVersion                *string  `toml:"ctcp_version"`
+	Nick                       string   `toml:"nick"`
+	User                       string   `toml:"user"`
+	RealName                   string   `toml:"real_name"`
+	Logging                    *bool    `toml:"logging"`
+	LogDir                     string   `toml:"log_dir"`
+	IgnoreFile                 string   `toml:"ignore_file"`
+	HighlightWords             []string `toml:"highlight_words"`
+	Timestamp                  string   `toml:"timestamp"`
+	Mouse                      bool     `toml:"mouse"`
+	SortChannelsAlphabetically *bool    `toml:"sort_channels_alphabetically"`
+	ShowTyping                 *bool    `toml:"show_typing"`
+	SendTyping                 *bool    `toml:"send_typing"`
+	ShowJoinMessages           *bool    `toml:"show_join_messages"`
+	ShowPartMessages           *bool    `toml:"show_part_messages"`
+	ShowParts                  *bool    `toml:"show_parts"`
+	ShowQuitMessages           *bool    `toml:"show_quit_messages"`
+	HistoryLines               int      `toml:"history_lines"`
+	InputHistoryLimit          *int     `toml:"input_history_limit"`
+	LogBacklogLines            *int     `toml:"log_backlog_lines"`
+	ReconnectSecs              int      `toml:"reconnect_seconds"`
 }
 
 // Omission preserves the usual identification; an explicit empty value opts
@@ -271,6 +272,10 @@ func KeyBindingMatches(binding, eventID string) bool {
 
 func (g GeneralConfig) LoggingEnabled() bool {
 	return g.Logging == nil || *g.Logging
+}
+
+func (g GeneralConfig) SortChannelsAlphabeticallyEnabled() bool {
+	return g.SortChannelsAlphabetically == nil || *g.SortChannelsAlphabetically
 }
 
 func (g GeneralConfig) ShowTypingEnabled() bool {

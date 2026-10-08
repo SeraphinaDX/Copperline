@@ -1,4 +1,4 @@
-# Copperline GUI 0.2.27
+# Copperline GUI 0.2.28
 
 One Fyne frontend for desktop and Android, using Copperline's existing SSH relay
 client. This milestone is a **relay client**. Start an existing Copperline relay
@@ -24,6 +24,7 @@ Example profile:
 [general]
 history_lines = 1000
 timestamp = "15:04"
+sort_channels_alphabetically = true
 
 [relay]
 mode = "client"
@@ -42,6 +43,12 @@ on the **relay server** with `show_join_messages`, `show_part_messages`, and
 counts. The server controls which notices are generated for attached clients.
 
 ## Using chat
+
+Channels and private queries sort alphabetically by name within each network,
+ignoring letter case, with the network's status buffer first. This applies to
+desktop lists and the Android **Channels** panel. Sorting defaults to on; set
+`sort_channels_alphabetically = false` under `[general]` in this client's Settings
+to retain creation order.
 
 On a wide desktop window, channels, chat, and users are visible together. Narrow
 windows and phones use **Channels** and **Users** panels. Each buffer has its own

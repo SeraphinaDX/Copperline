@@ -14,6 +14,9 @@ ignore_file = "~/.config/copperline/ignores.toml"
 highlight_words = [] # e.g. ["Copperline", "alternateNick", "server down"]
 timestamp = "15:04"
 mouse = true
+# Sort channels and queries by name within each network (case-insensitive).
+# Set false to retain creation order. Configure locally on each relay client.
+sort_channels_alphabetically = true
 # IRCv3 +typing indicators. Disable send_typing if you prefer not to reveal
 # when you are composing a message.
 show_typing = true
