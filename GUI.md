@@ -1,4 +1,4 @@
-# Copperline GUI 0.2.28
+# Copperline GUI 0.2.29
 
 One Fyne frontend for desktop and Android, using Copperline's existing SSH relay
 client. This milestone is a **relay client**. Start an existing Copperline relay
@@ -65,6 +65,12 @@ preserves the retained transcript without duplicating replayed messages. Scrolli
 up stops automatic scrolling; switching buffers or sending resumes it. Mentions,
 actions, notices, and errors use the configured theme colors. Server-status
 buffers show connection and WHOIS output.
+
+An updated relay server remembers channels joined during its current session,
+including channels outside its TOML autojoin list, and rejoins them after IRC
+disconnects. Keys supplied through `/join` are kept in memory. Channels you leave
+or are kicked from are removed from the reconnect list. This behavior is owned
+by the relay server, so update it as well as the GUI for this fix.
 
 On desktop, **Tab** in the message box completes nicknames from the current channel. At the start of a message it uses the IRC reply form `Nick: `, and repeated Tab presses cycle matching nicknames.
 

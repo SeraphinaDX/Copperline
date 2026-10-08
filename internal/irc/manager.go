@@ -75,6 +75,10 @@ type Session struct {
 	running  bool
 	ready    atomic.Bool
 	sendMu   sync.Mutex
+	// Reconnect membership outlives girc's per-connection channel state.
+	rejoinChannels  []channelJoin
+	pendingJoinKeys map[string]string
+	pendingParts    map[string]bool
 }
 
 var defaultCaps = []string{
@@ -130,6 +134,7 @@ func New(cfg *config.Config, emit func(model.Message)) *Manager {
 		}
 		m.sessions[sc.Name] = s
 		for _, target := range sc.Channels {
+			s.confirmChannelJoin(target)
 			m.rememberTarget(sc.Name, target)
 		}
 	}
@@ -621,6 +626,8 @@ func (m *Manager) Join(server, channel, key string) error {
 	if err != nil {
 		return err
 	}
+	s, _ := m.session(server)
+	s.rememberJoinRequest(channel, key)
 	if key != "" {
 		c.Cmd.JoinKey(channel, key)
 	} else {
@@ -634,6 +641,9 @@ func (m *Manager) Part(server, channel, reason string) error {
 	if err != nil {
 		return err
 	}
+	s, _ := m.session(server)
+	// Record the leave before queuing PART: a disconnect can lose its echo.
+	s.forgetChannels(channel, true)
 	if reason != "" {
 		c.Cmd.PartMessage(channel, reason)
 	} else {
@@ -973,11 +983,14 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 	switch e.Command {
 	case girc.CONNECTED:
 		m.serverLine(server, model.KindSystem, "connected as "+c.GetNick())
-		if s, err := m.session(server); err == nil && len(s.cfg.Channels) > 0 {
-			c.Cmd.Join(s.cfg.Channels...)
+		if s, err := m.session(server); err == nil {
+			s.rejoin(c)
 		}
 		return
 	case girc.DISCONNECTED, girc.CLOSED:
+		if s, err := m.session(server); err == nil {
+			s.clearPendingJoins()
+		}
 		m.clearTypingServer(server)
 		return
 	case "TAGMSG":
@@ -1060,12 +1073,23 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		m.emitMessage(model.Message{Time: when, Server: server, Target: target, Nick: source, User: user, Host: host, Text: e.Last(), Kind: model.KindNotice, Tags: tags})
 		return
 	case girc.JOIN:
+		if len(e.Params) > 0 && e.Source != nil && girc.ToRFC1459(source) == c.GetID() {
+			if s, err := m.session(server); err == nil {
+				s.confirmChannelJoin(e.Params[0])
+			}
+			m.rememberTarget(server, e.Params[0])
+		}
 		if len(e.Params) > 0 && m.cfg.General.ShowJoinMessagesEnabled() {
 			m.emitMessage(model.Message{Time: when, Server: server, Target: e.Params[0], Kind: model.KindSystem, Text: source + " joined", Tags: tags, SuppressUnread: true})
 		}
 		return
 	case girc.PART:
 		if len(e.Params) > 0 {
+			if e.Source != nil && girc.ToRFC1459(source) == c.GetID() {
+				if s, err := m.session(server); err == nil {
+					s.forgetChannels(e.Params[0], false)
+				}
+			}
 			// PART still updates girc's membership state and clears any typing
 			// indicator even when the user has chosen to hide the transcript line.
 			m.clearTyping(server, e.Params[0], source)
@@ -1080,6 +1104,11 @@ func (m *Manager) handleEvent(server string, c *girc.Client, e girc.Event) {
 		return
 	case girc.KICK:
 		if len(e.Params) >= 2 {
+			if girc.ToRFC1459(e.Params[1]) == c.GetID() {
+				if s, err := m.session(server); err == nil {
+					s.forgetChannels(e.Params[0], false)
+				}
+			}
 			m.clearTyping(server, e.Params[0], e.Params[1])
 			m.emitMessage(model.Message{Time: when, Server: server, Target: e.Params[0], Kind: model.KindSystem, Text: fmt.Sprintf("%s kicked %s: %s", source, e.Params[1], e.Last()), Tags: tags})
 		}

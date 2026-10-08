@@ -186,6 +186,20 @@ removed; neither departure event increments unread activity. In relay mode,
 set these options on the IRC-owning relay server and restart it. The relay
 forwards generated notices to attached clients without a protocol change.
 
+## Fixed in 0.2.29
+
+IRC reconnects now rejoin channels successfully joined during the current session,
+including channels outside the configured autojoin list. Keys supplied through
+`/join #channel key` are kept in memory for reconnects. Explicit `/part`, `/leave`,
+and `/close` requests, and kicks of your own nickname, remove the channel from the
+session's reconnect list. Failed joins and merely open buffers are not treated
+as joined channels.
+
+The shared IRC backend handles this in direct mode and on the relay server, so
+TUI, desktop GUI, and Android GUI clients benefit. In relay mode, update the relay
+server too. This session state does not change the TOML autojoin list or persist
+across a process restart.
+
 ## New in 0.2.28
 
 Channel lists sort alphabetically by default in the TUI, desktop GUI, and Android

@@ -14,6 +14,12 @@ import (
 
 func mockIRC(t *testing.T, c *girc.Client, reply string) <-chan string {
 	t.Helper()
+	lines, _ := mockIRCWithDisconnect(t, c, reply)
+	return lines
+}
+
+func mockIRCWithDisconnect(t *testing.T, c *girc.Client, reply string) (<-chan string, func()) {
+	t.Helper()
 	client, server := net.Pipe()
 	lines := make(chan string, 32)
 	ready := make(chan struct{})
@@ -40,7 +46,7 @@ func mockIRC(t *testing.T, c *girc.Client, reply string) <-chan string {
 			}
 		}
 	}()
-	t.Cleanup(func() {
+	disconnect := func() {
 		c.Close()
 		client.Close()
 		server.Close()
@@ -49,13 +55,14 @@ func mockIRC(t *testing.T, c *girc.Client, reply string) <-chan string {
 		case <-time.After(time.Second):
 			t.Error("IRC did not stop")
 		}
-	})
+	}
+	t.Cleanup(disconnect)
 	select {
 	case <-ready:
 	case <-time.After(time.Second):
 		t.Fatal("IRC did not connect")
 	}
-	return lines
+	return lines, disconnect
 }
 
 func TestSendRequiresMatchingServerRoundTrip(t *testing.T) {
