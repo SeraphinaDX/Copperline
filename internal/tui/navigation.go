@@ -206,10 +206,11 @@ func (a *App) selectRelative(delta int) {
 
 // sidebarOrder returns buffer keys in the exact order presented in the sidebar:
 // each server buffer first, followed by that server's channels and queries in
-// their stable creation order. Keyboard buffer navigation must use this same
-// ordering so next/previous-buffer bindings never appear to jump randomly.
+// alphabetical or creation order according to configuration. Keyboard buffer
+// navigation must use this same ordering so next/previous-buffer bindings never
+// appear to jump randomly.
 func (a *App) sidebarOrder() ([]string, string) {
-	buffers, current := a.state.SnapshotInfo()
+	buffers, current := a.sidebarBuffers()
 	servers := a.irc.ServerNames()
 	keys := make([]string, 0, len(buffers))
 
@@ -229,4 +230,12 @@ func (a *App) sidebarOrder() ([]string, string) {
 	}
 
 	return keys, current
+}
+
+func (a *App) sidebarBuffers() ([]model.BufferInfo, string) {
+	buffers, current := a.state.SnapshotInfo()
+	if a.cfg.General.SortChannelsAlphabeticallyEnabled() {
+		model.SortBuffersAlphabetically(buffers)
+	}
+	return buffers, current
 }

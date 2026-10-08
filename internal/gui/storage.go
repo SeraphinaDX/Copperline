@@ -19,6 +19,7 @@ import (
 
 const starterConfig = `[general]
 history_lines = 1000
+sort_channels_alphabetically = true
 show_join_messages = true
 show_part_messages = true
 show_quit_messages = true
