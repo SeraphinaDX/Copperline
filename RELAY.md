@@ -8,6 +8,14 @@ The relay has three modes:
 - `server` — headless Copperline relay. It owns the IRC connections, retains bounded in-memory scrollback, writes the normal logs, and listens for Copperline clients on its embedded SSH server.
 - `client` — local Copperline TUI. It connects only to a Copperline relay over SSH; it does not open IRC connections itself.
 
+From 0.2.29, the relay rejoins channels successfully joined during its current
+process after IRC reconnects, including channels outside its configured autojoin
+list. `/join` keys are retained in memory. Explicit leaves and kicks of your own
+nickname remove the channel from the session's reconnect list. SSH client
+reattachment does not reset that list; a relay process restart starts from the
+TOML autojoin list again. Update the IRC-owning relay server to get this behavior
+in attached TUI, desktop GUI, and Android GUI clients.
+
 ## Why SSH
 
 SSH gives the relay encrypted transport, public-key authentication and server host-key verification without deploying a TLS certificate or depending on a certificate authority.

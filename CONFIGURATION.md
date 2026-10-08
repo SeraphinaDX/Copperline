@@ -728,6 +728,19 @@ channels = ["#linux", "#go-nuts", "#copperline"]
 
 Copperline sends JOIN after the IRC connection has completed registration.
 
+The configured list seeds each network's reconnect membership when Copperline
+starts. Channels successfully joined later with `/join` are also rejoined after
+a dropped connection or a manual `/disconnect` followed by `/connect`. Keys
+supplied to `/join #channel key` remain in memory for reconnects. Explicit
+`/part`, `/leave`, or `/close` requests, and kicks of your own nickname, remove
+that channel from the current session's reconnect list, including configured
+autojoin channels. Opening a buffer or failing a JOIN does not add membership.
+
+This state lasts for the current process and does not rewrite `channels` in the
+configuration. A fresh process starts from the configured list again. In relay
+mode the relay server owns this state; update the server to get the fix in
+attached TUI, desktop, and Android clients.
+
 A channel being listed in the sidebar does not by itself mean the server accepted the JOIN:
 
 - `· #channel` — configured/open buffer, but not confirmed joined
