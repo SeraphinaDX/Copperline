@@ -186,6 +186,13 @@ removed; neither departure event increments unread activity. In relay mode,
 set these options on the IRC-owning relay server and restart it. The relay
 forwards generated notices to attached clients without a protocol change.
 
+## Fixed in 0.2.31
+
+`/flex` keeps longer GPU model names within its existing GPU field budget instead
+of cutting each model at 64 bytes. Linux uses compact AMD, NVIDIA, and Intel vendor
+labels, preserving the full reported device description and Radeon model suffix.
+The complete message remains bounded to one IRC line.
+
 ## New in 0.2.30
 
 `/flex` now includes GPU information when available and leaves off load averages.
@@ -246,7 +253,7 @@ include hostname, username, IP addresses, serial numbers, or account details.
 Example (values vary by device):
 
 ```text
-Copperline 0.2.30 | OS: CachyOS (Linux 6.18)/amd64 | CPU: Intel Core i5 — 8 logical CPUs | GPU: Intel Corporation UHD Graphics 620 | RAM: 4.2/15.5 GiB used | Up: 2d 3h 12m
+Copperline 0.2.31 | OS: CachyOS (Linux 6.18)/amd64 | CPU: Intel Core i5 — 8 logical CPUs | GPU: Intel UHD Graphics 620 | RAM: 4.2/15.5 GiB used | Up: 2d 3h 12m
 ```
 
 ## Fixed in 0.2.26

@@ -36,6 +36,22 @@ func TestSummaryOmitsUnavailableStats(t *testing.T) {
 	}
 }
 
+func TestRadeonFlexPreservesWholeModelAndOtherStats(t *testing.T) {
+	gpu := lspciGPUs("Class:\tVGA compatible controller [0300]\nVendor:\tAdvanced Micro Devices, Inc. [AMD/ATI] [1002]\nDevice:\tNavi 21 [Radeon RX 6800/6800 XT/6900 XT] [73bf]\n")
+	s := snapshot{os: "CachyOS", kernel: "Linux 7.2.9-1-cachyos", arch: "amd64", cpu: "AMD Ryzen 5 5500", cores: 12, gpu: gpu,
+		totalRAM: 32 << 30, availableRAM: 23 << 30, memoryUsageKnown: true,
+		uptime: 3*24*time.Hour + 20*time.Hour + 43*time.Minute, uptimeKnown: true}
+	text := s.format()
+	for _, want := range []string{"GPU: AMD Navi 21 [Radeon RX 6800/6800 XT/6900 XT]", "RAM: 9.0/32.0 GiB used", "Up: 3d 20h 43m"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("missing %q in flex: %q", want, text)
+		}
+	}
+	if strings.Contains(text, "...") || len(text) > 350 || !utf8.ValidString(text) {
+		t.Fatalf("invalid or truncated Radeon flex: %q", text)
+	}
+}
+
 func TestSummaryBoundsAndSanitizesPlatformData(t *testing.T) {
 	s := snapshot{os: strings.Repeat("界", 100), kernel: strings.Repeat("X", 100), arch: "arm64",
 		cpu: "CPU\r\n\x01ACTION\x01\x00\x1b[31m" + strings.Repeat("界", 100), cores: 128,
