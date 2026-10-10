@@ -3,7 +3,6 @@
 package sysinfo
 
 import (
-	"fmt"
 	"io"
 	"os"
 	"strconv"
@@ -34,8 +33,6 @@ func collect(s *snapshot) {
 		}
 		s.totalRAM = uint64(info.Totalram) * unit
 		s.uptime, s.uptimeKnown = time.Duration(info.Uptime)*time.Second, info.Uptime >= 0
-		const scale = float64(1 << 16)
-		s.load = fmt.Sprintf("%.2f %.2f %.2f", float64(info.Loads[0])/scale, float64(info.Loads[1])/scale, float64(info.Loads[2])/scale)
 	}
 	s.cpu = cpuModel(readSystemFile("/proc/cpuinfo"))
 	total, available, known := memoryInfo(readSystemFile("/proc/meminfo"))

@@ -8,6 +8,7 @@ import (
 )
 
 func platform(s *snapshot) {
+	s.gpu = linuxGPUs()
 	s.os = "Linux"
 	text := readSystemFile("/etc/os-release")
 	if text == "" {

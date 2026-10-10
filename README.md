@@ -186,6 +186,16 @@ removed; neither departure event increments unread activity. In relay mode,
 set these options on the IRC-owning relay server and restart it. The relay
 forwards generated notices to attached clients without a protocol change.
 
+## New in 0.2.30
+
+`/flex` now includes GPU information when available and leaves off load averages.
+Linux uses local `lspci` model names, with PCI vendor/device IDs as a fallback if
+pciutils is unavailable. Windows uses native display-adapter APIs; macOS uses
+the local System Profiler. Android reads GPU model files exposed by Adreno/Mali
+drivers when permitted. Distinct GPU names are included on systems with multiple
+adapters. Missing or restricted GPU information is omitted. Hardware queries
+have bounded execution time and output, and summaries remain a single IRC line.
+
 ## Fixed in 0.2.29
 
 IRC reconnects now rejoin channels successfully joined during the current session,
@@ -222,8 +232,8 @@ Omitting the setting or using `true` enables alphabetical sorting.
 `/flex` posts a compact system summary to the current channel or query in every
 frontend: TUI, desktop GUI, and Android GUI. Command names are case-insensitive,
 so `/Flex` works too. The summary includes Copperline version, OS/release and
-architecture, CPU model and logical CPU count, RAM, system uptime, and 1/5/15-minute
-load averages when available. Android also includes the device model when available.
+architecture, CPU model and logical CPU count, GPU, RAM, and system uptime when
+available. Android also includes the device model when available.
 Windows uses native system/registry APIs; macOS reports total RAM. Other platforms
 retain the portable OS, architecture, and CPU-count baseline. Missing/restricted
 stats are omitted.
@@ -236,7 +246,7 @@ include hostname, username, IP addresses, serial numbers, or account details.
 Example (values vary by device):
 
 ```text
-Copperline 0.2.27 | OS: CachyOS (Linux 6.18)/amd64 | CPU: Intel Core i5 — 8 logical CPUs | RAM: 4.2/15.5 GiB used | Up: 2d 3h 12m | Load: 0.20 0.30 0.40
+Copperline 0.2.30 | OS: CachyOS (Linux 6.18)/amd64 | CPU: Intel Core i5 — 8 logical CPUs | GPU: Intel Corporation UHD Graphics 620 | RAM: 4.2/15.5 GiB used | Up: 2d 3h 12m
 ```
 
 ## Fixed in 0.2.26

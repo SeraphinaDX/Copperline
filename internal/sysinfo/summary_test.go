@@ -11,10 +11,10 @@ import (
 )
 
 func TestSummaryFormatsSystemStats(t *testing.T) {
-	s := snapshot{os: "Example Linux", kernel: "Linux 6.18", arch: "amd64", cpu: "Example CPU", cores: 8,
+	s := snapshot{os: "Example Linux", kernel: "Linux 6.18", arch: "amd64", cpu: "Example CPU", gpu: "Example GPU", cores: 8,
 		totalRAM: 16 << 30, availableRAM: 6 << 30, memoryUsageKnown: true,
-		uptime: 49*time.Hour + 3*time.Minute, uptimeKnown: true, load: "0.20 0.30 0.40"}
-	want := "Copperline " + version.Current + " | OS: Example Linux (Linux 6.18)/amd64 | CPU: Example CPU — 8 logical CPUs | RAM: 10.0/16.0 GiB used | Up: 2d 1h 3m | Load: 0.20 0.30 0.40"
+		uptime: 49*time.Hour + 3*time.Minute, uptimeKnown: true}
+	want := "Copperline " + version.Current + " | OS: Example Linux (Linux 6.18)/amd64 | CPU: Example CPU — 8 logical CPUs | GPU: Example GPU | RAM: 10.0/16.0 GiB used | Up: 2d 1h 3m"
 	if got := s.format(); got != want {
 		t.Fatalf("summary = %q, want %q", got, want)
 	}
@@ -23,7 +23,7 @@ func TestSummaryFormatsSystemStats(t *testing.T) {
 func TestSummaryOmitsUnavailableStats(t *testing.T) {
 	s := snapshot{os: "Android", arch: "arm64", cores: 8}
 	text := s.format()
-	for _, unavailable := range []string{"RAM:", "Up:", "Load:", "Device:"} {
+	for _, unavailable := range []string{"GPU:", "RAM:", "Up:", "Load:", "Device:"} {
 		if strings.Contains(text, unavailable) {
 			t.Fatalf("unknown statistic fabricated: %q", text)
 		}
@@ -39,7 +39,7 @@ func TestSummaryOmitsUnavailableStats(t *testing.T) {
 func TestSummaryBoundsAndSanitizesPlatformData(t *testing.T) {
 	s := snapshot{os: strings.Repeat("界", 100), kernel: strings.Repeat("X", 100), arch: "arm64",
 		cpu: "CPU\r\n\x01ACTION\x01\x00\x1b[31m" + strings.Repeat("界", 100), cores: 128,
-		device: strings.Repeat("界", 100), totalRAM: 16 << 30, uptime: time.Hour, uptimeKnown: true, load: "1 2 3"}
+		device: strings.Repeat("界", 100), gpu: "GPU\r\n\x01ACTION\x01" + strings.Repeat("界", 100), totalRAM: 16 << 30, uptime: time.Hour, uptimeKnown: true}
 	text := s.format()
 	if len(text) > 350 || !utf8.ValidString(text) {
 		t.Fatalf("invalid IRC summary: %d bytes %q", len(text), text)
@@ -66,7 +66,7 @@ func TestUptimeUsesSystemDuration(t *testing.T) {
 
 func TestLiveSummaryHasPortableBaseline(t *testing.T) {
 	text := Summary()
-	if !strings.Contains(text, "OS:") || !strings.Contains(text, "logical CPUs") || len(text) > 350 || !utf8.ValidString(text) {
+	if !strings.Contains(text, "OS:") || !strings.Contains(text, "logical CPUs") || strings.Contains(text, "Load:") || len(text) > 350 || !utf8.ValidString(text) {
 		t.Fatalf("invalid local summary: %q", text)
 	}
 	t.Log(text)

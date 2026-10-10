@@ -15,6 +15,7 @@ type memoryStatus struct {
 }
 
 func collect(s *snapshot) {
+	s.gpu = windowsGPUs()
 	v := windows.RtlGetVersion()
 	s.os = fmt.Sprintf("Windows %d.%d build %d", v.MajorVersion, v.MinorVersion, v.BuildNumber)
 	s.uptime, s.uptimeKnown = windows.DurationSinceBoot(), true

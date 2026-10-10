@@ -3,8 +3,6 @@
 package sysinfo
 
 import (
-	"encoding/binary"
-	"fmt"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -12,6 +10,7 @@ import (
 
 func collect(s *snapshot) {
 	s.os = "macOS"
+	s.gpu = profilerGPUs(commandOutput(1500*time.Millisecond, "/usr/sbin/system_profiler", "SPDisplaysDataType", "-json", "-detailLevel", "mini"))
 	if release, err := unix.Sysctl("kern.osproductversion"); err == nil {
 		s.os += " " + release
 	}
@@ -23,14 +22,5 @@ func collect(s *snapshot) {
 	if boot, err := unix.SysctlTimeval("kern.boottime"); err == nil {
 		s.uptime = time.Since(time.Unix(boot.Sec, int64(boot.Usec)*1000))
 		s.uptimeKnown = s.uptime >= 0
-	}
-	// Both supported Darwin architectures use three uint32 values, four bytes
-	// of alignment padding, then the 64-bit long containing their scale.
-	if data, err := unix.SysctlRaw("vm.loadavg"); err == nil && len(data) >= 24 {
-		scale := float64(binary.NativeEndian.Uint64(data[16:24]))
-		if scale > 0 {
-			s.load = fmt.Sprintf("%.2f %.2f %.2f", float64(binary.NativeEndian.Uint32(data[0:4]))/scale,
-				float64(binary.NativeEndian.Uint32(data[4:8]))/scale, float64(binary.NativeEndian.Uint32(data[8:12]))/scale)
-		}
 	}
 }
