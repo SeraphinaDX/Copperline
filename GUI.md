@@ -1,4 +1,4 @@
-# Copperline GUI 0.2.30
+# Copperline GUI 0.2.31
 
 One Fyne frontend for desktop and Android, using Copperline's existing SSH relay
 client. This milestone is a **relay client**. Start an existing Copperline relay

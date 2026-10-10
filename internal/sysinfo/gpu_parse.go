@@ -12,7 +12,7 @@ func gpuNames(names []string) string {
 	seen := make(map[string]bool)
 	var models []string
 	for _, name := range names {
-		name = clean(name, 64)
+		name = clean(name, 112)
 		id := strings.ToLower(name)
 		if name != "" && !seen[id] {
 			seen[id] = true
@@ -33,6 +33,12 @@ func lspciGPUs(data string) string {
 		classID := strings.TrimSpace(pciID.FindString(fields["Class"]))
 		if strings.HasPrefix(classID, "[03") {
 			vendor := pciID.ReplaceAllString(fields["Vendor"], "")
+			// PCI vendor descriptions contain corporate names and aliases that
+			// waste the GPU field's budget. Keep the complete device description.
+			vendorID := strings.ToLower(strings.Trim(pciID.FindString(fields["Vendor"]), " []\t"))
+			if short := map[string]string{"1002": "AMD", "10de": "NVIDIA", "8086": "Intel"}[vendorID]; short != "" {
+				vendor = short
+			}
 			device := pciID.ReplaceAllString(fields["Device"], "")
 			if device != "" {
 				names = append(names, strings.TrimSpace(vendor+" "+device))
@@ -77,7 +83,7 @@ func androidGPUs(read func(string) string) string {
 		"/sys/class/kgsl/kgsl-3d0/gpu_model",
 		"/sys/class/misc/mali0/device/gpuinfo",
 	} {
-		if model := clean(read(path), 64); model != "" {
+		if model := clean(read(path), 112); model != "" {
 			return model
 		}
 	}

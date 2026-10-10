@@ -12,7 +12,7 @@ func TestLspciGPUModelsAndMultipleAdapters(t *testing.T) {
 		"Slot:\t01:00.0\nClass:\t3D controller [0302]\nVendor:\tNVIDIA Corporation [10de]\nDevice:\tGeForce RTX 4060 [2882]\nRev:\ta1\n\n" +
 		"Class:\tEthernet controller [0200]\nVendor:\tIntel Corporation [8086]\nDevice:\tEthernet [1111]\n\n" +
 		"Class:\t3D controller [0302]\nVendor:\tNVIDIA Corporation [10de]\nDevice:\tGeForce RTX 4060 [2882]"
-	want := "Intel Corporation UHD Graphics 620; NVIDIA Corporation GeForce RTX 4060"
+	want := "Intel UHD Graphics 620; NVIDIA GeForce RTX 4060"
 	if got := lspciGPUs(data); got != want {
 		t.Fatalf("GPU models = %q, want %q", got, want)
 	}
@@ -25,6 +25,20 @@ func TestLspciGPUModelsAndMultipleAdapters(t *testing.T) {
 		if got := lspciGPUs(bad); got != "" {
 			t.Fatalf("non-GPU record included: %q", got)
 		}
+	}
+}
+
+func TestAMDVendorDescriptionDoesNotTruncateRadeonModel(t *testing.T) {
+	data := "Class:\tVGA compatible controller [0300]\nVendor:\tAdvanced Micro Devices, Inc. [AMD/ATI] [1002]\nDevice:\tNavi 21 [Radeon RX 6800/6800 XT/6900 XT] [73bf]\n"
+	want := "AMD Navi 21 [Radeon RX 6800/6800 XT/6900 XT]"
+	if got := lspciGPUs(data); got != want {
+		t.Fatalf("Radeon description = %q, want %q", got, want)
+	}
+	// A model that fits the existing GPU field must not get a separate 64-byte
+	// truncation before it reaches that field (including native OS sources).
+	long := "Example Graphics Adapter " + strings.Repeat("M", 50)
+	if got := gpuNames([]string{long}); got != long {
+		t.Fatalf("model prematurely truncated: %q", got)
 	}
 }
 
