@@ -14,13 +14,12 @@ import (
 )
 
 type snapshot struct {
-	os, kernel, arch, cpu, device string
-	cores                         int
-	totalRAM, availableRAM        uint64
-	memoryUsageKnown              bool
-	uptime                        time.Duration
-	uptimeKnown                   bool
-	load                          string
+	os, kernel, arch, cpu, gpu, device string
+	cores                              int
+	totalRAM, availableRAM             uint64
+	memoryUsageKnown                   bool
+	uptime                             time.Duration
+	uptimeKnown                        bool
 }
 
 // Summary reports this client's device, even when messages go through a relay.
@@ -45,6 +44,9 @@ func (s snapshot) format() string {
 		cpu += " — "
 	}
 	parts = append(parts, fmt.Sprintf("CPU: %s%d logical CPUs", cpu, s.cores))
+	if gpu := clean(s.gpu, 112); gpu != "" {
+		parts = append(parts, "GPU: "+gpu)
+	}
 	if s.totalRAM > 0 {
 		const gib = float64(1 << 30)
 		if s.memoryUsageKnown && s.availableRAM <= s.totalRAM {
@@ -55,9 +57,6 @@ func (s snapshot) format() string {
 	}
 	if s.uptimeKnown && s.uptime >= 0 {
 		parts = append(parts, "Up: "+formatUptime(s.uptime))
-	}
-	if load := clean(s.load, 24); load != "" {
-		parts = append(parts, "Load: "+load)
 	}
 	// Leave room for IRC command, target, and server prefix overhead. Truncate
 	// on a UTF-8 boundary so long platform names cannot produce broken text.

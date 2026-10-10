@@ -1,4 +1,4 @@
-# Copperline GUI 0.2.29
+# Copperline GUI 0.2.30
 
 One Fyne frontend for desktop and Android, using Copperline's existing SSH relay
 client. This milestone is a **relay client**. Start an existing Copperline relay
@@ -79,10 +79,12 @@ the draft, or offers its text for copying if a newer draft already occupies that
 buffer. Copperline never automatically retries an uncertain send.
 
 `/flex` posts one compact message with Copperline version, OS/release, architecture,
-CPU model and logical CPU count, RAM, uptime, and load averages where available.
+CPU model and logical CPU count, GPU, RAM, and uptime where available. Load averages
+are omitted. Multiple distinct GPU names are shown when detected.
 It reports this client device, including Android, even when using an SSH relay.
 On Android the device model is included when available; macOS reports total RAM.
-Restricted or unavailable stats are omitted. Select a channel or query first.
+Android GPU names depend on readable Adreno/Mali driver model files; restricted
+or unavailable stats are omitted. Select a channel or query first.
 
 Supported slash commands:
 

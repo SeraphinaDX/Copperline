@@ -9,6 +9,7 @@ import (
 
 func platform(s *snapshot) {
 	s.os = "Android"
+	s.gpu = androidGPUs(readSystemFile)
 	// These two public properties provide the Android release and device model.
 	// Use a shared deadline: a missing/restricted getprop cannot stall input.
 	ctx, cancel := context.WithTimeout(context.Background(), 750*time.Millisecond)
