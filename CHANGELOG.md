@@ -2,6 +2,10 @@
 
 [Back to README](README.md)
 
+## Fixed in 0.2.38
+
+Unread counts now exclude messages discarded by the local history limit, so relay catch-up and long-running buffers cannot show more unread messages than they retain. Update the client to receive this fix; client and relay history limits remain independent.
+
 ## Added in 0.2.37
 
 Connect to an unconfigured IRC server with `/quick irc.example.org`. TLS with

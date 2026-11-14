@@ -13,6 +13,10 @@ if you have an existing installation.
 
 ![AnsiChat terminal interface](screenshots/screenshot2.avif)
 
+## Fixed in 0.2.38
+
+Unread counts now exclude messages discarded by the local history limit, so relay catch-up and long-running buffers cannot show more unread messages than they retain. Update the client to receive this fix; client and relay history limits remain independent.
+
 ## Quick start
 
 ### 1. Build the terminal client

@@ -142,7 +142,13 @@ func (s *State) Add(msg Message) {
 		// Drop old messages in-place instead of allocating/copying the entire
 		// retained history for every new line once the buffer is full. Clear
 		// removed entries first so their strings/tags can be reclaimed.
+		start := b.Total - uint64(len(b.Messages))
 		for i := 0; i < drop; i++ {
+			// Unread counts describe available activity, not messages that
+			// have already fallen out of the retained history window.
+			if start+uint64(i)+1 > b.ReadTotal && !b.Messages[i].SuppressUnread {
+				b.Unread--
+			}
 			b.Messages[i] = Message{}
 		}
 		b.Messages = b.Messages[drop:]

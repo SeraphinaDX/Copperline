@@ -1,4 +1,4 @@
-# AnsiChat GUI 0.2.37
+# AnsiChat GUI 0.2.38
 
 Formerly Copperline GUI. The installed name and executable are now AnsiChat and
 `ansichat-gui`. The technical app ID stays `ca.cerberusgames.copperline` so that

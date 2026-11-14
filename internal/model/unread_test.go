@@ -14,8 +14,8 @@ func TestMarkReadDoesNotConsumeConcurrentArrival(t *testing.T) {
 	}
 	s.Add(testMessage(3))
 	s.Add(testMessage(4))
-	if b := s.CurrentInfo(); b.Unread != 3 || b.ReadTotal != 1 {
-		t.Fatalf("eviction cleared unread: %#v", b)
+	if b := s.CurrentInfo(); b.Unread != 2 || b.ReadTotal != 1 {
+		t.Fatalf("retained unread state: %#v", b)
 	}
 	s.MarkReadThrough("test", "#chan", 0)
 	if s.CurrentInfo().ReadTotal != 1 {
@@ -82,5 +82,33 @@ func TestUnreadMentionSurvivesEvictionAndClearsWhenRead(t *testing.T) {
 	s.SelectKey(Key("test", "#other"))
 	if s.CurrentInfo().Mention {
 		t.Fatal("selecting channel by key did not clear mention")
+	}
+}
+
+func TestUnreadCountsOnlyRetainedActivity(t *testing.T) {
+	s := New(3)
+	s.Select("test", "#active")
+	for i := 0; i < 20; i++ {
+		msg := testMessage(i)
+		msg.Replay = true
+		msg.SuppressUnread = i%2 == 0
+		s.Add(msg)
+		b := s.Find("test", "#chan")
+		want := 0
+		for _, retained := range b.Messages {
+			if !retained.SuppressUnread {
+				want++
+			}
+		}
+		if b.Unread != want {
+			t.Fatalf("after replay %d: unread=%d, retained activity=%d", i, b.Unread, want)
+		}
+	}
+	s.Select("test", "#chan")
+	for i := 20; i < 25; i++ {
+		s.Add(testMessage(i))
+	}
+	if b := s.CurrentInfo(); b.Unread != 3 {
+		t.Fatalf("after read and eviction: %#v", b)
 	}
 }
